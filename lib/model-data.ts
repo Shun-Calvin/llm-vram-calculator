@@ -175,6 +175,22 @@ export const MODEL_LIST: ModelSpec[] = [
   { id: "glmz1_9b",           name: "GLM-Z1 9B Rumination",         params: 9.4,   layers: 40,  hiddenDim: 4096,  numHeads: 32,  numKvHeads: 2,   intermediateSize: 13696, maxContextTokens: 131072, source: "huggingface", family: "GLM",      vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Reasoning / rumination model; extended thinking budget" },
   { id: "glmz1_32b",          name: "GLM-Z1 32B Rumination",        params: 32.0,  layers: 62,  hiddenDim: 5120,  numHeads: 40,  numKvHeads: 8,   intermediateSize: 13696, maxContextTokens: 131072, source: "huggingface", family: "GLM",      vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Reasoning model; top open-source score on AIME 2025" },
   { id: "glmz1_32b_moe",      name: "GLM-Z1 32B MoE Rumination",   params: 96.0,  activeParams: 32.0, layers: 62, hiddenDim: 5120, numHeads: 40, numKvHeads: 8, intermediateSize: 13696, maxContextTokens: 131072, numExperts: 8, numExpertsActive: 3, source: "huggingface", family: "GLM", vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Sparse 96B total, 32B active; 8 experts, 3 active" },
+  // ── Qwen2.5-Coder ────────────────────────────────────────────────────────
+  // Code-specialized models built on the Qwen2.5 architecture.
+  // All dimensions verified from the official technical report (arXiv:2409.12186)
+  // Table 1 and confirmed against individual model config.json files on HuggingFace.
+  // Architecture: Qwen2ForCausalLM (RoPE, SwiGLU, RMSNorm, QKV bias, GQA).
+  // Vocab: 151,646 (includes FIM special tokens: fim_prefix/middle/suffix/pad,
+  //        repo_name, file_sep). Native context: 32,768 tokens; 128K via YaRN.
+  // Trained on 5.5 trillion tokens (70% code, 20% text, 10% math).
+  // Note: 3B intermediate_size in the paper is 4,864 for the base and 11,008
+  //       for Qwen2.5-Coder-3B specifically — use 11,008 per Table 1.
+  { id: "qwen25_coder_0_5b",  name: "Qwen2.5-Coder 0.5B",          params: 0.49,  layers: 24, hiddenDim: 896,  numHeads: 14, numKvHeads: 2, intermediateSize: 4864,  maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: true,  releaseYear: 2024, notes: "Code-specialized Qwen2.5; 32K native, 128K via YaRN; FIM support" },
+  { id: "qwen25_coder_1_5b",  name: "Qwen2.5-Coder 1.5B",          params: 1.54,  layers: 28, hiddenDim: 1536, numHeads: 12, numKvHeads: 2, intermediateSize: 8960,  maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: true,  releaseYear: 2024, notes: "Code-specialized Qwen2.5; 32K native, 128K via YaRN; FIM support" },
+  { id: "qwen25_coder_3b",    name: "Qwen2.5-Coder 3B",            params: 3.09,  layers: 36, hiddenDim: 2048, numHeads: 16, numKvHeads: 2, intermediateSize: 11008, maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: true,  releaseYear: 2024, notes: "Code-specialized Qwen2.5; 32K native, 128K via YaRN; FIM support" },
+  { id: "qwen25_coder_7b",    name: "Qwen2.5-Coder 7B",            params: 7.61,  layers: 28, hiddenDim: 3584, numHeads: 28, numKvHeads: 4, intermediateSize: 18944, maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: false, releaseYear: 2024, notes: "Code-specialized Qwen2.5; 6.53B non-embedding params; 128K via YaRN" },
+  { id: "qwen25_coder_14b",   name: "Qwen2.5-Coder 14B",           params: 14.8,  layers: 48, hiddenDim: 5120, numHeads: 40, numKvHeads: 8, intermediateSize: 13824, maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: false, releaseYear: 2024, notes: "Code-specialized Qwen2.5; 128K via YaRN" },
+  { id: "qwen25_coder_32b",   name: "Qwen2.5-Coder 32B",           params: 32.5,  layers: 64, hiddenDim: 5120, numHeads: 40, numKvHeads: 8, intermediateSize: 27648, maxContextTokens: 131072, source: "both",        family: "Qwen2.5-Coder", vocabSize: 151646, tiedEmbeddings: false, releaseYear: 2024, notes: "SOTA open-source code model; matches GPT-4o on coding; 128K via YaRN" },
 ];
 
 export const MODEL_FAMILIES = [...new Set(MODEL_LIST.map((m) => m.family))].sort();
