@@ -42,7 +42,7 @@ export default function Page() {
                 variant="outline"
                 className="text-[10px] border-primary/30 text-primary bg-primary/10 font-mono hidden sm:flex"
               >
-                v3.0
+                v4.0
               </Badge>
             </div>
             <span className="hidden md:flex items-center gap-1 text-xs text-muted-foreground">
@@ -74,7 +74,7 @@ export default function Page() {
                 GPU Memory & Performance Estimator
               </h1>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-xl">
-                Estimate VRAM usage, time-to-first-token, and decode throughput for 80+ LLMs across 60+ GPUs with correct MoE calculations. All dropdowns support type-to-search; slider values are editable.
+                Estimate VRAM, TTFT, and tok/s for 100+ LLMs (HF + Ollama) across 70+ GPUs including H20, L20, RTX Pro 6000D Blackwell. Correct MoE formulas, up to 4096 concurrent users. Press Play to simulate inference.
               </p>
             </div>
             <TabsList className="bg-muted border border-border">

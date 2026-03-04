@@ -29,6 +29,7 @@ import {
   type GpuSpec,
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
+import { InferenceSimulator } from "@/components/inference-simulator";
 
 interface ResultsPanelProps {
   config: CalcConfig;
@@ -468,6 +469,15 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           />
         </div>
       </div>
+
+      {/* ── Inference Simulation ─────────────────────────────── */}
+      <InferenceSimulator
+        ttftMs={ttft}
+        tokensPerSecond={tps}
+        concurrentUsers={concurrentUsers}
+        modelName={model.name}
+        promptTokens={promptTokens}
+      />
 
       {/* ── Sensitivity ───────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-4">

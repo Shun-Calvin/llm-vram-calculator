@@ -472,13 +472,13 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             </div>
             <SliderWithInput
               min={1}
-              max={1024}
+              max={4096}
               step={1}
               value={config.concurrentUsers}
               onValueChange={(v) => update({ concurrentUsers: v })}
               format={formatUsers}
               unit=" users"
-              markers={[1, 8, 64, 256, 1024]}
+              markers={[1, 32, 256, 1024, 4096]}
             />
             {config.concurrentUsers > 64 && (
               <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
