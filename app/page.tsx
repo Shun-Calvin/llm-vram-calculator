@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import ConfigPanel, { type CalcConfig } from "@/components/config-panel";
 import ResultsPanel from "@/components/results-panel";
 import ComparePanel from "@/components/compare-panel";
+import { ShareConfigButton } from "@/components/share-config-button";
 import { GPU_LIST, MODEL_LIST, QUANT_OPTIONS, KV_CACHE_OPTIONS } from "@/lib/llm-data";
+import { decodeConfigFromUrl, validateConfig } from "@/lib/url-config";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, GitCompare, ChevronRight, Cpu } from "lucide-react";
+import { Calculator, GitCompare, ChevronRight, Cpu, Share2 } from "lucide-react";
 
 const DEFAULT_CONFIG: CalcConfig = {
   gpu: GPU_LIST.find((g) => g.id === "rtx4090")!,
@@ -22,8 +25,24 @@ const DEFAULT_CONFIG: CalcConfig = {
 };
 
 export default function Page() {
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<CalcConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState("calculator");
+  const [hasLoadedUrlConfig, setHasLoadedUrlConfig] = useState(false);
+
+  // Load config from URL on mount
+  useEffect(() => {
+    if (hasLoadedUrlConfig) return;
+    
+    const search = searchParams.toString();
+    if (search) {
+      const loadedConfig = decodeConfigFromUrl(`?${search}`);
+      if (loadedConfig && validateConfig(loadedConfig)) {
+        setConfig(loadedConfig);
+        setHasLoadedUrlConfig(true);
+      }
+    }
+  }, [searchParams, hasLoadedUrlConfig]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -61,6 +80,7 @@ export default function Page() {
             <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
               {config.quant.label}
             </span>
+            <ShareConfigButton config={config} />
           </div>
         </div>
       </header>
