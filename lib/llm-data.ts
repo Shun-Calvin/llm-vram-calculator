@@ -121,13 +121,19 @@ export function calcKvCacheVram(
   model: ModelSpec,
   contextLen: number,
   kvCache: KvCacheConfig,
-  concurrentUsers: number
+  concurrentUsers: number,
+  pagedAttention: boolean = false
 ): number {
   const headDim = model.hiddenDim / model.numHeads;
   const bpv = kvCache.bitsPerElement / 8;
   const elements =
     2 * model.numKvHeads * headDim * contextLen * model.layers * concurrentUsers;
-  return (elements * bpv) / 1024 ** 3;
+  let gb = (elements * bpv) / 1024 ** 3;
+  // Paged attention reduces memory fragmentation by ~25%
+  if (pagedAttention) {
+    gb *= 0.75;
+  }
+  return gb;
 }
 
 /**
@@ -159,9 +165,12 @@ export interface VramBreakdown {
   weightsGb: number;
   kvCacheGb: number;
   activationsGb: number;
+  draftModelGb: number;
   totalGb: number;
   isMoE: boolean;
   activeParamFraction?: number; // active / total params for MoE display
+  pagedAttention: boolean;
+  speculativeDecoding: boolean;
 }
 
 export function calcTotalVram(
@@ -169,17 +178,34 @@ export function calcTotalVram(
   quant: QuantConfig,
   kvCache: KvCacheConfig,
   contextLen: number,
-  concurrentUsers: number
+  concurrentUsers: number,
+  pagedAttention: boolean = false,
+  speculativeDecoding: boolean = false,
+  specDraftModelSize: number = 0
 ): VramBreakdown {
   const weightsGb = calcWeightsVram(model, quant);
-  const kvCacheGb = calcKvCacheVram(model, contextLen, kvCache, concurrentUsers);
+  const kvCacheGb = calcKvCacheVram(model, contextLen, kvCache, concurrentUsers, pagedAttention);
   const activationsGb = calcActivationVram(model, contextLen, concurrentUsers);
-  const totalGb = weightsGb + kvCacheGb + activationsGb;
+  // Draft model VRAM for speculative decoding
+  const draftModelGb = speculativeDecoding
+    ? (specDraftModelSize * 1e9 * bytesPerParam(quant)) / 1024 ** 3
+    : 0;
+  const totalGb = weightsGb + kvCacheGb + activationsGb + draftModelGb;
   const isMoE = Boolean(model.numExperts);
   const activeParamFraction = isMoE
     ? getActiveParams(model) / model.params
     : undefined;
-  return { weightsGb, kvCacheGb, activationsGb, totalGb, isMoE, activeParamFraction };
+  return {
+    weightsGb,
+    kvCacheGb,
+    activationsGb,
+    draftModelGb,
+    totalGb,
+    isMoE,
+    activeParamFraction,
+    pagedAttention,
+    speculativeDecoding,
+  };
 }
 
 /**

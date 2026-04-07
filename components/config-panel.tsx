@@ -25,7 +25,8 @@ import {
   type KvCacheConfig,
   type ModelSource,
 } from "@/lib/llm-data";
-import { Info, Cpu, Database, Settings2, LayoutGrid, Layers } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Info, Cpu, Database, Settings2, LayoutGrid, Layers, Zap } from "lucide-react";
 
 export interface CalcConfig {
   gpu: GpuSpec;
@@ -36,6 +37,11 @@ export interface CalcConfig {
   contextLen: number;
   concurrentUsers: number;
   promptTokens: number;
+  // Advanced inference options
+  pagedAttention: boolean;
+  speculativeDecoding: boolean;
+  specDraftModelSize: number; // draft model size in billions (e.g. 0.5, 1.5)
+  specNumDraftTokens: number; // tokens to draft per step (e.g. 4-8)
 }
 
 interface ConfigPanelProps {
@@ -492,6 +498,100 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               </div>
             )}
           </div>
+        </div>
+  </section>
+
+      <Separator className="bg-border" />
+
+      {/* ── Advanced Inference Options ────────────────────────── */}
+      <section>
+        <SectionHeader icon={Zap} title="Inference Optimizations" />
+        <div className="flex flex-col gap-4">
+
+          {/* Paged Attention */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Label className="text-xs text-muted-foreground">Paged Attention</Label>
+                <InfoTooltip text="vLLM-style paged KV cache. Reduces memory fragmentation by ~20-40%, enabling longer contexts and more concurrent users. Standard in vLLM, SGLang, and TensorRT-LLM." />
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Reduces KV cache overhead by ~25%
+              </p>
+            </div>
+            <Switch
+              checked={config.pagedAttention}
+              onCheckedChange={(v) => update({ pagedAttention: v })}
+            />
+          </div>
+
+          {/* Speculative Decoding */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Label className="text-xs text-muted-foreground">Speculative Decoding</Label>
+                <InfoTooltip text="Uses a small draft model to predict multiple tokens, then verifies with the main model in parallel. Can improve throughput 2-3× for high-latency models at the cost of additional VRAM for the draft model." />
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                Draft model predicts, main model verifies
+              </p>
+            </div>
+            <Switch
+              checked={config.speculativeDecoding}
+              onCheckedChange={(v) => update({ speculativeDecoding: v })}
+            />
+          </div>
+
+          {/* Speculative Decoding Options (shown when enabled) */}
+          {config.speculativeDecoding && (
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-3">
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground">Draft Model Size</Label>
+                  <InfoTooltip text="Size of the draft model in billions of parameters. Smaller = faster drafting but lower acceptance rate. Common choices: 0.5B-1.5B for 7B+ main models." />
+                </div>
+                <SliderWithInput
+                  min={0.1}
+                  max={3}
+                  step={0.1}
+                  value={config.specDraftModelSize}
+                  onValueChange={(v) => update({ specDraftModelSize: v })}
+                  format={(v) => `${v.toFixed(1)}B`}
+                  unit=""
+                  markers={[0.5, 1, 1.5, 2]}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground">Draft Tokens per Step</Label>
+                  <InfoTooltip text="Number of tokens the draft model generates before verification. More tokens = higher potential speedup but lower acceptance rate. Typical: 4-8 tokens." />
+                </div>
+                <SliderWithInput
+                  min={2}
+                  max={16}
+                  step={1}
+                  value={config.specNumDraftTokens}
+                  onValueChange={(v) => update({ specNumDraftTokens: v })}
+                  format={(v) => `${v}`}
+                  unit=" tokens"
+                  markers={[2, 4, 8, 12, 16]}
+                />
+              </div>
+              <p className="text-[10px] text-primary/80 leading-relaxed">
+                Draft model adds ~{((config.specDraftModelSize * 1e9 * (config.quant.bitsPerWeight / 8)) / 1024 ** 3).toFixed(2)} GB VRAM. 
+                Estimated speedup: {(1 + (config.specNumDraftTokens * 0.6) / 2).toFixed(1)}× at ~60% acceptance rate.
+              </p>
+            </div>
+          )}
+
+          {/* Paged Attention info */}
+          {config.pagedAttention && (
+            <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+              <p className="text-[10px] text-emerald-400 leading-relaxed">
+                Paged attention enabled: KV cache memory reduced by ~25%. This is the default for vLLM, SGLang, and TensorRT-LLM.
+              </p>
+            </div>
+          )}
         </div>
       </section>
     </div>

@@ -1,16 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import ConfigPanel, { type CalcConfig } from "@/components/config-panel";
 import ResultsPanel from "@/components/results-panel";
 import ComparePanel from "@/components/compare-panel";
-import { ShareConfigButton } from "@/components/share-config-button";
 import { GPU_LIST, MODEL_LIST, QUANT_OPTIONS, KV_CACHE_OPTIONS } from "@/lib/llm-data";
-import { decodeConfigFromUrl, validateConfig } from "@/lib/url-config";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calculator, GitCompare, ChevronRight, Cpu } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const DEFAULT_CONFIG: CalcConfig = {
   gpu: GPU_LIST.find((g) => g.id === "rtx4090")!,
@@ -21,22 +20,15 @@ const DEFAULT_CONFIG: CalcConfig = {
   contextLen: 4096,
   concurrentUsers: 1,
   promptTokens: 512,
+  pagedAttention: true,
+  speculativeDecoding: false,
+  specDraftModelSize: 0.5,
+  specNumDraftTokens: 4,
 };
 
 export default function Page() {
   const [config, setConfig] = useState<CalcConfig>(DEFAULT_CONFIG);
   const [activeTab, setActiveTab] = useState("calculator");
-
-  // Load config from URL on mount (client-side only)
-  useEffect(() => {
-    const search = window.location.search;
-    if (search) {
-      const loadedConfig = decodeConfigFromUrl(search);
-      if (loadedConfig && validateConfig(loadedConfig)) {
-        setConfig(loadedConfig);
-      }
-    }
-  }, []);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -64,17 +56,17 @@ export default function Page() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground hidden sm:flex">
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.gpu.name}
             </span>
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.numGpus}× GPU
             </span>
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.quant.label}
             </span>
-            <ShareConfigButton config={config} />
+            <ThemeToggle />
           </div>
         </div>
       </header>
