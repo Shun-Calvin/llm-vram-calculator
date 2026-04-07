@@ -132,12 +132,33 @@ function FormulaBlock({
 }
 
 export default function ResultsPanel({ config }: ResultsPanelProps) {
-  const { gpu, numGpus, model, quant, kvCache, contextLen, concurrentUsers, promptTokens } =
-    config;
+  const {
+    gpu,
+    numGpus,
+    model,
+    quant,
+    kvCache,
+    contextLen,
+    concurrentUsers,
+    promptTokens,
+    pagedAttention = false,
+    speculativeDecoding = false,
+    specDraftModelSize = 0,
+  } = config;
 
   const vram = useMemo(
-    () => calcTotalVram(model, quant, kvCache, contextLen, concurrentUsers),
-    [model, quant, kvCache, contextLen, concurrentUsers]
+    () =>
+      calcTotalVram(
+        model,
+        quant,
+        kvCache,
+        contextLen,
+        concurrentUsers,
+        pagedAttention,
+        speculativeDecoding,
+        specDraftModelSize
+      ),
+    [model, quant, kvCache, contextLen, concurrentUsers, pagedAttention, speculativeDecoding, specDraftModelSize]
   );
 
   const ttft = useMemo(
@@ -219,6 +240,12 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             className="bg-purple-400 transition-all duration-500"
             style={{ width: `${(vram.activationsGb / vram.totalGb) * 100}%` }}
           />
+          {vram.draftModelGb > 0 && (
+            <div
+              className="bg-cyan-500 transition-all duration-500"
+              style={{ width: `${(vram.draftModelGb / vram.totalGb) * 100}%` }}
+            />
+          )}
         </div>
         <div className="flex gap-4 text-[10px] text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1">
@@ -234,6 +261,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             <span className="text-muted-foreground/60">
               ({((vram.kvCacheGb / vram.totalGb) * 100).toFixed(0)}%)
             </span>
+            {pagedAttention && <span className="text-emerald-400 ml-0.5">(paged)</span>}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-sm bg-purple-400 inline-block" />
@@ -242,6 +270,15 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
               ({((vram.activationsGb / vram.totalGb) * 100).toFixed(0)}%)
             </span>
           </span>
+          {vram.draftModelGb > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm bg-cyan-500 inline-block" />
+              Draft {fmtGb(vram.draftModelGb)}{" "}
+              <span className="text-muted-foreground/60">
+                ({((vram.draftModelGb / vram.totalGb) * 100).toFixed(0)}%)
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -292,10 +329,32 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             <span className="font-mono text-foreground">{activeParams}B active params</span>{" "}
             ({model.numExpertsActive}/{model.numExperts} experts, {((activeParams / model.params) * 100).toFixed(1)}% of weights).
             This gives {model.name} significantly faster inference than a dense model of the same total size.
+        </div>
+      </div>
+      )}
+
+      {/* ── Inference Optimizations Note ─────────────────────── */}
+      {(pagedAttention || speculativeDecoding) && (
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 flex items-start gap-2.5">
+          <Zap className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <span className="text-foreground font-semibold">Inference Optimizations Active:</span>{" "}
+            {pagedAttention && (
+              <span>
+                Paged attention reduces KV cache memory by ~25% through dynamic memory allocation.{" "}
+              </span>
+            )}
+            {speculativeDecoding && (
+              <span>
+                Speculative decoding with {specDraftModelSize}B draft model adds{" "}
+                <span className="font-mono text-foreground">{fmtGb(vram.draftModelGb)}</span> VRAM
+                but can improve throughput by 1.5-3× depending on acceptance rate.
+              </span>
+            )}
           </div>
         </div>
       )}
-
+      
       {/* ── Detailed Breakdown Table ─────────────────────────── */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border bg-muted/30">
@@ -314,7 +373,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             {
               label: "KV Cache",
               value: vram.kvCacheGb,
-              sub: `2 × ${model.numKvHeads} KV heads × ${headDim} head dim × ${contextLen.toLocaleString()} ctx × ${model.layers} layers × ${concurrentUsers} users × ${kvCache.bitsPerElement / 8}B`,
+              sub: `2 × ${model.numKvHeads} KV heads × ${headDim} head dim × ${contextLen.toLocaleString()} ctx × ${model.layers} layers × ${concurrentUsers} users × ${kvCache.bitsPerElement / 8}B${pagedAttention ? " (−25% paged)" : ""}`,
               color: "bg-amber-500",
             },
             {
@@ -323,6 +382,16 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
               sub: `${concurrentUsers} users × ${contextLen.toLocaleString()} ctx × ${model.hiddenDim} hidden × 2B${isMoE ? " + MoE routing overhead" : ""}`,
               color: "bg-purple-400",
             },
+            ...(speculativeDecoding && vram.draftModelGb > 0
+              ? [
+                  {
+                    label: "Draft Model (Spec. Decoding)",
+                    value: vram.draftModelGb,
+                    sub: `${specDraftModelSize}B draft model × ${quant.bitsPerWeight} bpw`,
+                    color: "bg-cyan-500",
+                  },
+                ]
+              : []),
           ].map(({ label, value, sub, color }) => (
             <div key={label} className="px-4 py-3 flex items-start gap-3">
               <div className={`w-2.5 h-2.5 rounded-sm flex-shrink-0 mt-1 ${color}`} />

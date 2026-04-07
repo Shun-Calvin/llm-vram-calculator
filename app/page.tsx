@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calculator, GitCompare, ChevronRight, Cpu } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const DEFAULT_CONFIG: CalcConfig = {
   gpu: GPU_LIST.find((g) => g.id === "rtx4090")!,
@@ -19,6 +20,10 @@ const DEFAULT_CONFIG: CalcConfig = {
   contextLen: 4096,
   concurrentUsers: 1,
   promptTokens: 512,
+  pagedAttention: true,
+  speculativeDecoding: false,
+  specDraftModelSize: 0.5,
+  specNumDraftTokens: 4,
 };
 
 export default function Page() {
@@ -51,16 +56,17 @@ export default function Page() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground hidden sm:flex">
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.gpu.name}
             </span>
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.numGpus}× GPU
             </span>
-            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px]">
+            <span className="px-2 py-1 rounded bg-muted font-mono text-[10px] hidden sm:inline">
               {config.quant.label}
             </span>
+            <ThemeToggle />
           </div>
         </div>
       </header>
