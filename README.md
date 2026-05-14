@@ -4,7 +4,7 @@ A comprehensive GPU memory and performance estimator for Large Language Models. 
 
 ![LLM VRAM Calculator](./public/og-image.png)
 
-**Live Demo:** [https://llm-vram-calculator.vercel.app](https://llm-vram-calculator.vercel.app)
+**Live Demo:** [https://v0-llm-vram-calculator.vercel.app](https://v0-llm-vram-calculator.vercel.app)
 
 ## Features
 
