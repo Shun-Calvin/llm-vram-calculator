@@ -101,36 +101,25 @@ export function InferenceSimulator({
           setTtftActual(ttftTime);
           setPhase("generating");
 
-          // Start token generation - split text into subword-like fragments for more tokens
-          const fragments = sampleText.current.split(/(?<=\s|[,.!?;:])/);
-          let fragIdx = 0;
+          // Start token generation - split text into words for natural display
+          const words = sampleText.current.split(/\s+/).filter(w => w.length > 0);
+          let wordIdx = 0;
           const msPerToken = 1000 / simTps;
-          let pendingText = "";
-          let charsSinceFlush = 0;
 
           genIntervalRef.current = setInterval(() => {
-            if (fragIdx >= fragments.length) {
-              if (pendingText) {
-                setDisplayedText((prev) => prev + pendingText);
-                pendingText = "";
-              }
+            if (wordIdx >= words.length) {
               cleanup();
               setPhase("done");
               return;
             }
-            const frag = fragments[fragIdx];
-            pendingText += frag;
-            charsSinceFlush += frag.length;
-            // Estimate tokens: ~4 chars per token on average
-            const tokensToAdd = Math.max(1, Math.round(charsSinceFlush / 4));
-            if (tokensToAdd > 0) {
-              setDisplayedText((prev) => prev + pendingText);
-              setGeneratedTokens((n) => n + tokensToAdd);
-              pendingText = "";
-              charsSinceFlush = 0;
-            }
+            const word = words[wordIdx];
+            // Display the word (add space before if not first word)
+            setDisplayedText((prev) => prev ? prev + " " + word : word);
+            // Estimate tokens: ~1.3 tokens per word on average (BPE tokenization)
+            const tokensForWord = Math.max(1, Math.ceil(word.length / 4));
+            setGeneratedTokens((n) => n + tokensForWord);
             setElapsedMs(performance.now() - startTimeRef.current);
-            fragIdx++;
+            wordIdx++;
           }, msPerToken);
         }
       };
