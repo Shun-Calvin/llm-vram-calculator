@@ -8,7 +8,7 @@ import { GPU_LIST, MODEL_LIST, QUANT_OPTIONS, KV_CACHE_OPTIONS } from "@/lib/llm
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calculator, GitCompare, ChevronRight, Cpu } from "lucide-react";
+import { Calculator, GitCompare, ChevronRight, Cpu, Github } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const DEFAULT_CONFIG: CalcConfig = {
@@ -24,6 +24,9 @@ const DEFAULT_CONFIG: CalcConfig = {
   speculativeDecoding: false,
   specDraftModelSize: 0.5,
   specNumDraftTokens: 4,
+  specMode: "standard",
+  expertOffloading: false,
+  numGpuExperts: 8,
 };
 
 export default function Page() {
@@ -142,10 +145,19 @@ export default function Page() {
       </main>
 
       {/* ── Footer ───────────────────────────────────────────── */}
-      <footer className="border-t border-border py-4 px-6 text-center">
-        <p className="text-[11px] text-muted-foreground">
+      <footer className="border-t border-border py-4 px-6 flex flex-col items-center gap-2">
+        <p className="text-[11px] text-muted-foreground text-center max-w-2xl">
           Estimates are physics-based approximations. Real-world performance varies by framework, driver version, and system memory bandwidth. Validated against vLLM, llama.cpp, and Ollama benchmarks.
         </p>
+        <a
+          href="https://github.com/Shun-Calvin/llm-vram-calculator"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Github className="w-3.5 h-3.5" />
+          <span>Shun-Calvin/llm-vram-calculator</span>
+        </a>
       </footer>
     </div>
   );

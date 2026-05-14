@@ -17,15 +17,22 @@ interface InferenceSimulatorProps {
 type SimPhase = "idle" | "prefill" | "generating" | "done";
 
 const SAMPLE_OUTPUTS: string[] = [
-  "The memory requirements for large language models scale with both the number of parameters and the precision used during inference. For a 7B parameter model in BF16, you need approximately 14 GB of VRAM just for the weights, before accounting for KV cache, activations, and framework overhead.",
-  "Mixture-of-Experts architectures offer a compelling trade-off: by activating only a subset of experts per token, MoE models can achieve the quality of much larger dense models while keeping compute and memory bandwidth costs proportional to the active parameter count.",
-  "When deploying LLMs in production, the token generation rate is fundamentally memory-bandwidth bound. Each decode step requires streaming the full model weights from HBM to compute units — regardless of how powerful your GPU's tensor cores are.",
-  "Context window size has a quadratic relationship with attention compute but only a linear relationship with KV cache memory. A 128K context window requires 32× more KV cache memory than a 4K window, making quantized KV cache essential for long-context deployments.",
-  "With tensor parallelism across 8 GPUs, inference throughput scales near-linearly for memory-bandwidth-bound workloads, while TTFT benefits from the combined TFLOPS — though inter-GPU communication overhead becomes the bottleneck at higher GPU counts.",
+  "Large language models require significant GPU memory for deployment. The memory requirements scale with both the number of parameters and the precision used during inference. For a 7B parameter model in BF16, you need approximately 14 GB of VRAM just for the weights, before accounting for KV cache, activations, and framework overhead. Quantization reduces this by storing weights at lower precision. For example, Q4_K_M uses 4.5 bits per weight, cutting memory by about 3.5x compared to FP16. This allows models that would normally require multiple GPUs to run on a single consumer GPU. The key trade-off is between model quality and memory usage. Lower precision quantization introduces more noise into the weights, which can degrade output quality for complex tasks like reasoning and mathematics. For simple tasks like text completion or summarization, aggressive quantization often works well with minimal quality loss.",
+  "Mixture-of-Experts architectures offer a compelling trade-off: by activating only a subset of experts per token, MoE models can achieve the quality of much larger dense models while keeping compute and memory bandwidth costs proportional to the active parameter count. In an MoE model with 256 total experts and 8 active per token, only about 3 percent of the total parameters are computed for each forward pass, yet all expert weights must remain in GPU memory. This is why a model like DeepSeek V3 with 685 billion total parameters can achieve inference speeds comparable to a 37 billion parameter dense model. The KV cache for MoE models is also independent of expert count since it depends only on the attention layers, not the feed-forward expert layers. Expert offloading can further reduce VRAM usage by keeping only frequently used experts on the GPU while offloading others to CPU memory.",
+  "When deploying LLMs in production, the token generation rate is fundamentally memory-bandwidth bound. Each decode step requires streaming the full model weights from HBM to compute units regardless of how powerful GPU tensor cores are. This means that memory bandwidth is usually the primary bottleneck for inference throughput. For a model with active parameters A and quantization of B bytes per parameter, each generated token requires reading A times B bytes from memory. With a memory bandwidth of 1000 GB per second, a 70B parameter model at 4-bit quantization can generate approximately 1000 divided by 70 times 0.5 tokens per second, or around 28 tokens per second. Using tensor parallelism across multiple GPUs increases effective bandwidth proportionally but adds communication overhead.",
+  "Context window size has a quadratic relationship with attention compute but only a linear relationship with KV cache memory. A 128K context window requires 32 times more KV cache memory than a 4K window, making quantized KV cache essential for long-context deployments. The KV cache stores key and value tensors for every token in the sequence across all attention layers. With Grouped Query Attention using 8 KV heads instead of 32 query heads, the KV cache is 4 times smaller than standard multi-head attention. For a 70B model with 80 layers processing 128K context, the KV cache alone can exceed 50 GB of VRAM per user. Paged attention algorithms used in vLLM and similar frameworks reduce memory fragmentation by dynamically allocating KV cache blocks, saving approximately 20 to 40 percent of KV cache memory.",
+  "With tensor parallelism across 8 GPUs, inference throughput scales near-linearly for memory-bandwidth-bound workloads, while TTFT benefits from the combined TFLOPS though inter-GPU communication overhead becomes the bottleneck at higher GPU counts. Each GPU holds a shard of the model weights and computes its portion of each transformer layer. For the forward pass, GPUs must communicate via NVLink or Infinity Fabric to synchronize attention outputs and feed-forward network results. The communication overhead scales with model dimension and sequence length, and can dominate at very large GPU counts. For optimal efficiency, models should be large enough to justify the communication cost. A rule of thumb is that each GPU should hold at least 5 to 10 billion parameters worth of sharded weights.",
+  "Speculative decoding is a technique to accelerate text generation by using a small draft model to predict multiple tokens ahead, which are then verified in parallel by the main model. This works because the draft model runs much faster due to its smaller size, while the verification pass by the main model can process multiple tokens simultaneously. The typical speedup is 1.5 to 3 times depending on the draft model size, the acceptance rate of drafted tokens, and the number of draft tokens per step. Multi-Token Prediction or MTP takes this further by building the speculative heads directly into the main model, eliminating the need for a separate draft model. DeepSeek V3 and R1 series support MTP natively, achieving approximately 1.8 times throughput improvement with only a tiny VRAM overhead for the additional prediction heads.",
 ];
 
 function pickSampleOutput(seed: number): string {
-  return SAMPLE_OUTPUTS[seed % SAMPLE_OUTPUTS.length];
+  const count = 5;
+  const idx = seed % SAMPLE_OUTPUTS.length;
+  const parts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    parts.push(SAMPLE_OUTPUTS[(idx + i) % SAMPLE_OUTPUTS.length]);
+  }
+  return parts.join(" ");
 }
 
 export function InferenceSimulator({
@@ -69,8 +76,8 @@ export function InferenceSimulator({
   // Cap simulation TTFT: we animate prefill at real-time for small values,
   // but cap to 4s max for very slow GPUs.
   const simTtftMs = Math.min(ttftMs, 4000);
-  // Cap tok/s display at reasonable animation speed (max 40 chars/s visual)
-  const simTps = Math.min(tokensPerSecond, 120);
+  // Cap tok/s display at reasonable animation speed (max 250 chars/s visual)
+  const simTps = Math.min(tokensPerSecond, 250);
 
   const start = useCallback(() => {
     reset();
@@ -94,23 +101,36 @@ export function InferenceSimulator({
           setTtftActual(ttftTime);
           setPhase("generating");
 
-          // Start token generation
-          const words = sampleText.current.split(" ");
-          let wordIdx = 0;
+          // Start token generation - split text into subword-like fragments for more tokens
+          const fragments = sampleText.current.split(/(?<=\s|[,.!?;:])/);
+          let fragIdx = 0;
           const msPerToken = 1000 / simTps;
+          let pendingText = "";
+          let charsSinceFlush = 0;
 
           genIntervalRef.current = setInterval(() => {
-            if (wordIdx >= words.length) {
+            if (fragIdx >= fragments.length) {
+              if (pendingText) {
+                setDisplayedText((prev) => prev + pendingText);
+                pendingText = "";
+              }
               cleanup();
               setPhase("done");
               return;
             }
-            setDisplayedText((prev) =>
-              prev ? prev + " " + words[wordIdx] : words[wordIdx]
-            );
-            setGeneratedTokens((n) => n + 1);
+            const frag = fragments[fragIdx];
+            pendingText += frag;
+            charsSinceFlush += frag.length;
+            // Estimate tokens: ~4 chars per token on average
+            const tokensToAdd = Math.max(1, Math.round(charsSinceFlush / 4));
+            if (tokensToAdd > 0) {
+              setDisplayedText((prev) => prev + pendingText);
+              setGeneratedTokens((n) => n + tokensToAdd);
+              pendingText = "";
+              charsSinceFlush = 0;
+            }
             setElapsedMs(performance.now() - startTimeRef.current);
-            wordIdx++;
+            fragIdx++;
           }, msPerToken);
         }
       };

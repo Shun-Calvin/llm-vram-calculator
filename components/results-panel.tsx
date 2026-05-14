@@ -23,6 +23,7 @@ import {
   calcTotalVram,
   calcTTFT,
   calcTokensPerSecond,
+  calcWeightsVram,
   gpusRequired,
   effectiveBandwidthGBs,
   getActiveParams,
@@ -144,6 +145,9 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
     pagedAttention = false,
     speculativeDecoding = false,
     specDraftModelSize = 0,
+    specMode = "standard",
+    expertOffloading = false,
+    numGpuExperts = 0,
   } = config;
 
   const vram = useMemo(
@@ -156,9 +160,12 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         concurrentUsers,
         pagedAttention,
         speculativeDecoding,
-        specDraftModelSize
+        specDraftModelSize,
+        specMode,
+        expertOffloading,
+        numGpuExperts
       ),
-    [model, quant, kvCache, contextLen, concurrentUsers, pagedAttention, speculativeDecoding, specDraftModelSize]
+    [model, quant, kvCache, contextLen, concurrentUsers, pagedAttention, speculativeDecoding, specDraftModelSize, specMode, expertOffloading, numGpuExperts]
   );
 
   const ttft = useMemo(
@@ -167,8 +174,8 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   );
 
   const tps = useMemo(
-    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers),
-    [model, quant, gpu, numGpus, concurrentUsers]
+    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor),
+    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor]
   );
 
   const totalAvailableVram = gpu.vramGb * numGpus;
@@ -194,25 +201,25 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
 
   return (
     <div className="flex flex-col gap-6 p-5 overflow-y-auto h-full">
-      {/* ── Fit Status ──────────────────────────────────────── */}
+      {/* ?�?� Fit Status ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className={`rounded-lg border p-4 flex items-start gap-3 ${fitCfg.bg}`}>
         <FitIcon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${fitCfg.color}`} />
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-semibold ${fitCfg.color}`}>{fitCfg.label}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             {fmtGb(vram.totalGb)} required / {fmtGb(totalAvailableVram)} available (
-            {numGpus}× {gpu.name})
+            {numGpus}? {gpu.name})
           </p>
           {fitStatus === "overflow" && (
             <p className="text-xs text-muted-foreground mt-1">
               Minimum GPUs needed:{" "}
-              <span className="font-mono font-bold text-foreground">{minGpus}×</span>
+              <span className="font-mono font-bold text-foreground">{minGpus}?</span>
             </p>
           )}
         </div>
       </div>
 
-      {/* ── VRAM Usage Bar ───────────────────────────────────── */}
+      {/* ?�?� VRAM Usage Bar ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>VRAM Utilization</span>
@@ -244,6 +251,12 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             <div
               className="bg-cyan-500 transition-all duration-500"
               style={{ width: `${(vram.draftModelGb / vram.totalGb) * 100}%` }}
+            />
+          )}
+          {vram.mtpHeadGb && vram.mtpHeadGb > 0 && (
+            <div
+              className="bg-cyan-400 transition-all duration-500"
+              style={{ width: `${(vram.mtpHeadGb / vram.totalGb) * 100}%` }}
             />
           )}
         </div>
@@ -279,10 +292,19 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
               </span>
             </span>
           )}
+          {vram.mtpHeadGb && vram.mtpHeadGb > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm bg-cyan-400 inline-block" />
+              MTP Heads {fmtGb(vram.mtpHeadGb)}{" "}
+              <span className="text-muted-foreground/60">
+                ({((vram.mtpHeadGb / vram.totalGb) * 100).toFixed(0)}%)
+              </span>
+            </span>
+          )}
         </div>
       </div>
 
-      {/* ── Primary Metric Cards ─────────────────────────────── */}
+      {/* ?�?� Primary Metric Cards ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard
           icon={HardDrive}
@@ -307,7 +329,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           label="Time to First Token"
           value={ttft < 1000 ? ttft.toFixed(0) : (ttft / 1000).toFixed(2)}
           unit={ttft < 1000 ? "ms" : "s"}
-          sub={`${promptTokens} prompt tokens · ${numGpus}× GPU · ${isMoE ? `${activeParams}B active params` : `${model.params}B params`}`}
+          sub={`${promptTokens} prompt tokens · ${numGpus}? GPU · ${isMoE ? `${activeParams}B active params` : `${model.params}B params`}`}
         />
         <MetricCard
           icon={Zap}
@@ -318,7 +340,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         />
       </div>
 
-      {/* ── MoE explanation callout ──────────────────────────── */}
+      {/* ?�?� MoE explanation callout ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       {isMoE && (
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-start gap-2.5">
           <Layers className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
@@ -333,8 +355,8 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
       </div>
       )}
 
-      {/* ── Inference Optimizations Note ─────────────────────── */}
-      {(pagedAttention || speculativeDecoding) && (
+      {/* ?�?� Inference Optimizations Note ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
+      {(pagedAttention || speculativeDecoding || vram.expertOffloading) && (
         <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 flex items-start gap-2.5">
           <Zap className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
           <div className="text-xs text-muted-foreground leading-relaxed">
@@ -344,18 +366,32 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
                 Paged attention reduces KV cache memory by ~25% through dynamic memory allocation.{" "}
               </span>
             )}
-            {speculativeDecoding && (
+            {speculativeDecoding && vram.specMode === "standard" && (
               <span>
                 Speculative decoding with {specDraftModelSize}B draft model adds{" "}
                 <span className="font-mono text-foreground">{fmtGb(vram.draftModelGb)}</span> VRAM
-                but can improve throughput by 1.5-3× depending on acceptance rate.
+                but can improve throughput by 1.5-3? depending on acceptance rate.{" "}
+              </span>
+            )}
+            {speculativeDecoding && vram.specMode === "mtp" && (
+              <span>
+                MTP speculative decoding using the model's native multi-token prediction heads.{" "}
+                No separate draft model needed ??only <span className="font-mono text-foreground">{fmtGb(vram.mtpHeadGb ?? 0.3)}</span>{" "}
+                for MTP heads. Estimated ~1.8? throughput improvement.{" "}
+              </span>
+            )}
+            {vram.expertOffloading && vram.numGpuExperts && (
+              <span>
+                Expert offloading active: {vram.numGpuExperts} of {model.numExperts} experts on GPU,{" "}
+                rest offloaded to CPU. VRAM reduced from {fmtGb(calcWeightsVram(model, quant))} to{" "}
+                <span className="font-mono text-foreground">{fmtGb(vram.weightsGb)}</span> for weights.
               </span>
             )}
           </div>
         </div>
       )}
       
-      {/* ── Detailed Breakdown Table ─────────────────────────── */}
+      {/* ?�?� Detailed Breakdown Table ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border bg-muted/30">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
@@ -367,27 +403,37 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             {
               label: "Model Weights",
               value: vram.weightsGb,
-              sub: `${model.params}B params × ${quant.bitsPerWeight} bpw × ${quant.overheadFactor}× overhead${isMoE ? ` (${model.numExperts} experts, all loaded)` : ""}`,
+              sub: `${model.params}B params ? ${quant.bitsPerWeight} bpw ? ${quant.overheadFactor}? overhead${isMoE ? (vram.expertOffloading && vram.numGpuExperts ? ` (${vram.numGpuExperts}/${model.numExperts} experts on GPU)` : ` (${model.numExperts} experts, all loaded)`) : ""}`,
               color: "bg-primary",
             },
             {
               label: "KV Cache",
               value: vram.kvCacheGb,
-              sub: `2 × ${model.numKvHeads} KV heads × ${headDim} head dim × ${contextLen.toLocaleString()} ctx × ${model.layers} layers × ${concurrentUsers} users × ${kvCache.bitsPerElement / 8}B${pagedAttention ? " (−25% paged)" : ""}`,
+              sub: `2 ? ${model.numKvHeads} KV heads ? ${headDim} head dim ? ${contextLen.toLocaleString()} ctx ? ${model.layers} layers ? ${concurrentUsers} users ? ${kvCache.bitsPerElement / 8}B${pagedAttention ? " (??5% paged)" : ""}`,
               color: "bg-amber-500",
             },
             {
               label: "Activations",
               value: vram.activationsGb,
-              sub: `${concurrentUsers} users × ${contextLen.toLocaleString()} ctx × ${model.hiddenDim} hidden × 2B${isMoE ? " + MoE routing overhead" : ""}`,
+              sub: `${concurrentUsers} users ? ${contextLen.toLocaleString()} ctx ? ${model.hiddenDim} hidden ? 2B${isMoE ? " + MoE routing overhead" : ""}`,
               color: "bg-purple-400",
             },
-            ...(speculativeDecoding && vram.draftModelGb > 0
+            ...(speculativeDecoding && vram.specMode === "standard" && vram.draftModelGb > 0
               ? [
                   {
                     label: "Draft Model (Spec. Decoding)",
                     value: vram.draftModelGb,
-                    sub: `${specDraftModelSize}B draft model × ${quant.bitsPerWeight} bpw`,
+                    sub: `${specDraftModelSize}B draft model ? ${quant.bitsPerWeight} bpw`,
+                    color: "bg-cyan-500",
+                  },
+                ]
+              : []),
+            ...(speculativeDecoding && vram.specMode === "mtp" && vram.mtpHeadGb
+              ? [
+                  {
+                    label: "MTP Heads (Spec. Decoding)",
+                    value: vram.mtpHeadGb,
+                    sub: "Multi-Token Prediction heads (~0.3 GB, built into model)",
                     color: "bg-cyan-500",
                   },
                 ]
@@ -415,27 +461,27 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         </div>
       </div>
 
-      {/* ── Multi-GPU note ────────────────────────────────────── */}
+      {/* ?�?� Multi-GPU note ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       {numGpus > 1 && (
         <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-start gap-2.5">
           <Activity className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
           <div className="text-xs text-muted-foreground leading-relaxed">
             <span className="text-foreground font-semibold">
-              Tensor Parallelism ({numGpus}× GPUs):
+              Tensor Parallelism ({numGpus}? GPUs):
             </span>{" "}
-            Weights sharded across {numGpus} GPUs — each holds{" "}
+            Weights sharded across {numGpus} GPUs ??each holds{" "}
             {fmtGb(vram.weightsGb / numGpus)} of weights. Effective memory bandwidth:{" "}
             {effectiveBw.toFixed(0)} GB/s
             {gpu.nvlinkBandwidthGBs >= 400
               ? " (NVLink, 85% efficiency)"
               : " (PCIe, 65% efficiency)"}
-            . TTFT uses {numGpus}× {gpu.tflops16} TF ={" "}
+            . TTFT uses {numGpus}? {gpu.tflops16} TF ={" "}
             {(gpu.tflops16 * numGpus * 0.8).toFixed(0)} TF effective.
           </div>
         </div>
       )}
 
-      {/* ── Per-user KV note for high concurrency ────────────── */}
+      {/* ?�?� Per-user KV note for high concurrency ?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       {concurrentUsers > 1 && (
         <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-start gap-2.5">
           <Activity className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -455,7 +501,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
 
       <Separator className="bg-border" />
 
-      {/* ── Formula Reference ─────────────────────────────────── */}
+      {/* ?�?� Formula Reference ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">
           Formula Reference
@@ -464,12 +510,12 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           <FormulaBlock
             title="Model Weights VRAM"
             formula={[
-              `weights_GB = total_params × 10⁹ × (bits_per_weight / 8) × overhead / 1024³`,
+              `weights_GB = total_params ? 10??? (bits_per_weight / 8) ? overhead / 1024³`,
               ``,
               isMoE
                 ? `[MoE] ALL ${model.numExperts} expert weights are loaded into VRAM.`
                 : ``,
-              `Example: ${model.params}B × ${(quant.bitsPerWeight / 8).toFixed(4)} B × ${quant.overheadFactor} ÷ 1024³`,
+              `Example: ${model.params}B ? ${(quant.bitsPerWeight / 8).toFixed(4)} B ? ${quant.overheadFactor} ÷ 1024³`,
               `       = ${vram.weightsGb.toFixed(3)} GB`,
             ]
               .filter(Boolean)
@@ -483,17 +529,17 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           <FormulaBlock
             title="KV Cache VRAM"
             formula={[
-              `kv_GB = 2 × kv_heads × head_dim × seq_len × layers × users × bytes_per_kv / 1024³`,
+              `kv_GB = 2 ? kv_heads ? head_dim ? seq_len ? layers ? users ? bytes_per_kv / 1024³`,
               ``,
               `head_dim = hidden_dim / num_heads = ${model.hiddenDim} / ${model.numHeads} = ${headDim}`,
               ``,
               isMoE ? `[MoE] KV cache depends on attention only, NOT on expert count.` : ``,
-              `kv_GB = 2 × ${model.numKvHeads} × ${headDim} × ${contextLen.toLocaleString()} × ${model.layers} × ${concurrentUsers} × ${kvCache.bitsPerElement / 8}`,
+              `kv_GB = 2 ? ${model.numKvHeads} ? ${headDim} ? ${contextLen.toLocaleString()} ? ${model.layers} ? ${concurrentUsers} ? ${kvCache.bitsPerElement / 8}`,
               `     = ${vram.kvCacheGb.toFixed(4)} GB`,
             ]
               .filter(Boolean)
               .join("\n")}
-            explanation={`The KV cache stores Key and Value tensors for every transformer layer. With GQA (${model.numKvHeads} KV heads vs ${model.numHeads} attention heads), the cache is ${(model.numHeads / model.numKvHeads).toFixed(0)}× smaller than MHA. KV cache scales linearly with context length and concurrent users. For MoE models, the attention architecture is independent of expert routing.`}
+            explanation={`The KV cache stores Key and Value tensors for every transformer layer. With GQA (${model.numKvHeads} KV heads vs ${model.numHeads} attention heads), the cache is ${(model.numHeads / model.numKvHeads).toFixed(0)}? smaller than MHA. KV cache scales linearly with context length and concurrent users. For MoE models, the attention architecture is independent of expert routing.`}
           />
           <FormulaBlock
             title={isMoE ? "Time to First Token (MoE)" : "Time to First Token"}
@@ -501,10 +547,10 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
               isMoE
                 ? `[MoE] FLOPs use ACTIVE params (${activeParams}B), not total (${model.params}B)`
                 : ``,
-              `ttft = 2 × ${isMoE ? "active_params" : "params"} × prompt_tokens / (tflops × 10¹² × gpus × eff)`,
+              `ttft = 2 ? ${isMoE ? "active_params" : "params"} ? prompt_tokens / (tflops ? 10¹² ? gpus ? eff)`,
               ``,
-              `Prefill FLOPs = 2 × ${activeParams}B × ${promptTokens} = ${((2 * activeParams * promptTokens) / 1e3).toFixed(1)}G`,
-              `Eff. TFLOPS = ${gpu.tflops16} × ${numGpus} × ${numGpus > 1 ? "0.80" : "1.0"} × ${quant.bitsPerWeight >= 8 ? "1.0" : "0.85"} = ${(gpu.tflops16 * numGpus * (numGpus > 1 ? 0.8 : 1) * (quant.bitsPerWeight >= 8 ? 1 : 0.85)).toFixed(1)} TF`,
+              `Prefill FLOPs = 2 ? ${activeParams}B ? ${promptTokens} = ${((2 * activeParams * promptTokens) / 1e3).toFixed(1)}G`,
+              `Eff. TFLOPS = ${gpu.tflops16} ? ${numGpus} ? ${numGpus > 1 ? "0.80" : "1.0"} ? ${quant.bitsPerWeight >= 8 ? "1.0" : "0.85"} = ${(gpu.tflops16 * numGpus * (numGpus > 1 ? 0.8 : 1) * (quant.bitsPerWeight >= 8 ? 1 : 0.85)).toFixed(1)} TF`,
               `TTFT = ${((2 * activeParams * 1e9 * promptTokens) / (gpu.tflops16 * numGpus * (numGpus > 1 ? 0.8 : 1) * (quant.bitsPerWeight >= 8 ? 1 : 0.85) * 1e12)).toFixed(4)} s = ${ttftDisplay}`,
             ]
               .filter(Boolean)
@@ -519,12 +565,12 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
             title={isMoE ? "Tokens Per Second (MoE)" : "Tokens Per Second"}
             formula={[
               isMoE
-                ? `[MoE] Bandwidth uses ACTIVE params (${activeParams}B) — only active expert weights are streamed`
+                ? `[MoE] Bandwidth uses ACTIVE params (${activeParams}B) ??only active expert weights are streamed`
                 : ``,
-              `tps = eff_bandwidth / (${isMoE ? "active_params" : "params"} × bytes_per_weight / gpus) / users`,
+              `tps = eff_bandwidth / (${isMoE ? "active_params" : "params"} ? bytes_per_weight / gpus) / users`,
               ``,
               `eff_BW = ${effectiveBw.toFixed(0)} GB/s`,
-              `bytes/token = ${activeParams}B × ${(quant.bitsPerWeight / 8).toFixed(4)} B/w / ${numGpus} GPU = ${((activeParams * 1e9 * (quant.bitsPerWeight / 8)) / numGpus / 1e9).toFixed(3)} GB`,
+              `bytes/token = ${activeParams}B ? ${(quant.bitsPerWeight / 8).toFixed(4)} B/w / ${numGpus} GPU = ${((activeParams * 1e9 * (quant.bitsPerWeight / 8)) / numGpus / 1e9).toFixed(3)} GB`,
               `tps (raw) = ${(effectiveBw / ((activeParams * 1e9 * (quant.bitsPerWeight / 8)) / numGpus / 1e9)).toFixed(1)} tok/s`,
               `tps/user  = ${tps.toFixed(1)} tok/s`,
             ]
@@ -539,7 +585,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         </div>
       </div>
 
-      {/* ── Inference Simulation ─────────────────────────────── */}
+      {/* ?�?� Inference Simulation ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <InferenceSimulator
         ttftMs={ttft}
         tokensPerSecond={tps}
@@ -548,7 +594,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         promptTokens={promptTokens}
       />
 
-      {/* ── Sensitivity ───────────────────────────────────────── */}
+      {/* ?�?� Sensitivity ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className="rounded-lg border border-border bg-card p-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Key Sensitivities
@@ -556,25 +602,25 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         <div className="flex flex-col gap-2">
           {[
             {
-              label: "Context ×2",
-              impact: `KV cache → ${(vram.kvCacheGb * 2).toFixed(2)} GB (+${vram.kvCacheGb.toFixed(2)} GB)`,
+              label: "Context ?2",
+              impact: `KV cache ??${(vram.kvCacheGb * 2).toFixed(2)} GB (+${vram.kvCacheGb.toFixed(2)} GB)`,
               severity: vram.kvCacheGb > vram.weightsGb * 0.3 ? "high" : "low",
             },
             {
-              label: "Users ×2",
-              impact: `KV+Act → ${((vram.kvCacheGb + vram.activationsGb) * 2).toFixed(2)} GB · TPS/user ÷2 · Total TPS same`,
+              label: "Users ?2",
+              impact: `KV+Act ??${((vram.kvCacheGb + vram.activationsGb) * 2).toFixed(2)} GB · TPS/user ÷2 · Total TPS same`,
               severity: "medium",
             },
             {
               label: "Q4 vs BF16",
-              impact: `Weights: ${fmtGb(vram.weightsGb * (1 - 4.5 / 16))} saved · ~2.5× faster decode`,
+              impact: `Weights: ${fmtGb(vram.weightsGb * (1 - 4.5 / 16))} saved · ~2.5? faster decode`,
               severity: "low",
             },
             ...(isMoE
               ? [
                   {
                     label: "MoE vs Dense",
-                    impact: `${(model.params / activeParams).toFixed(1)}× larger VRAM vs dense ${activeParams}B, but same compute speed`,
+                    impact: `${(model.params / activeParams).toFixed(1)}? larger VRAM vs dense ${activeParams}B, but same compute speed`,
                     severity: "medium" as const,
                   },
                 ]

@@ -168,9 +168,55 @@ export interface VramBreakdown {
   draftModelGb: number;
   totalGb: number;
   isMoE: boolean;
-  activeParamFraction?: number; // active / total params for MoE display
+  activeParamFraction?: number;
   pagedAttention: boolean;
   speculativeDecoding: boolean;
+  mtpHeadGb?: number;
+  expertOffloading?: boolean;
+  numGpuExperts?: number;
+  specMode?: "standard" | "mtp";
+  offloadPenaltyFactor?: number;
+}
+
+/**
+ * Estimate the fraction of total params that belong to expert FFN weights.
+ */
+export function expertWeightFraction(model: ModelSpec): number {
+  if (!model.numExperts) return 0;
+  const expertParamsPerLayerPerExpert = 3 * model.hiddenDim * model.intermediateSize;
+  const totalExpertFfnParams = expertParamsPerLayerPerExpert * model.numExperts * model.layers;
+  return Math.min(totalExpertFfnParams / (model.params * 1e9), 0.95);
+}
+
+/**
+ * Check if a model supports MTP (Multi-Token Prediction) speculative decoding.
+ */
+export function supportsMtp(model: ModelSpec): boolean {
+  return new Set([
+    "deepseek_v3", "deepseek_r1", "deepseek_r1_0528", "deepseek_prover_v2",
+  ]).has(model.id);
+}
+
+/**
+ * Calculate VRAM impact of expert offloading for MoE models.
+ */
+export function calcExpertOffloadVram(
+  model: ModelSpec,
+  quant: QuantConfig,
+  gpuExpertCount: number
+): { weightsGb: number; offloadPenaltyFactor: number; expertWeightFrac: number } | null {
+  if (!model.numExperts || gpuExpertCount >= model.numExperts) return null;
+  const frac = expertWeightFraction(model);
+  const totalWeightsGb = calcWeightsVram(model, quant);
+  const nonExpertGb = totalWeightsGb * (1 - frac);
+  const expertGb = totalWeightsGb * frac;
+  const gpuExpertGb = expertGb * (gpuExpertCount / model.numExperts);
+  const offloadedFrac = 1 - gpuExpertCount / model.numExperts;
+  return {
+    weightsGb: nonExpertGb + gpuExpertGb,
+    offloadPenaltyFactor: 1 + offloadedFrac * 0.15,
+    expertWeightFrac: frac,
+  };
 }
 
 export function calcTotalVram(
@@ -181,20 +227,45 @@ export function calcTotalVram(
   concurrentUsers: number,
   pagedAttention: boolean = false,
   speculativeDecoding: boolean = false,
-  specDraftModelSize: number = 0
+  specDraftModelSize: number = 0,
+  specMode: "standard" | "mtp" = "standard",
+  expertOffloading: boolean = false,
+  numGpuExperts: number = 0
 ): VramBreakdown {
-  const weightsGb = calcWeightsVram(model, quant);
+  // Weights: account for expert offloading
+  let weightsGb: number;
+  let offloadPenaltyFactor: number | undefined;
+  if (expertOffloading && model.numExperts) {
+    const off = calcExpertOffloadVram(model, quant, numGpuExperts);
+    if (off) {
+      weightsGb = off.weightsGb;
+      offloadPenaltyFactor = off.offloadPenaltyFactor;
+    } else {
+      weightsGb = calcWeightsVram(model, quant);
+    }
+  } else {
+    weightsGb = calcWeightsVram(model, quant);
+  }
+
   const kvCacheGb = calcKvCacheVram(model, contextLen, kvCache, concurrentUsers, pagedAttention);
   const activationsGb = calcActivationVram(model, contextLen, concurrentUsers);
-  // Draft model VRAM for speculative decoding
-  const draftModelGb = speculativeDecoding
-    ? (specDraftModelSize * 1e9 * bytesPerParam(quant)) / 1024 ** 3
-    : 0;
-  const totalGb = weightsGb + kvCacheGb + activationsGb + draftModelGb;
+
+  // Draft model or MTP head VRAM
+  let draftModelGb = 0;
+  let mtpHeadGb: number | undefined;
+  if (speculativeDecoding) {
+    if (specMode === "mtp") {
+      // MTP heads add minimal VRAM (~0.3 GB for 2-3 heads)
+      mtpHeadGb = 0.3;
+    } else {
+      draftModelGb = (specDraftModelSize * 1e9 * bytesPerParam(quant)) / 1024 ** 3;
+    }
+  }
+
+  const totalGb = weightsGb + kvCacheGb + activationsGb + draftModelGb + (mtpHeadGb ?? 0);
   const isMoE = Boolean(model.numExperts);
-  const activeParamFraction = isMoE
-    ? getActiveParams(model) / model.params
-    : undefined;
+  const activeParamFraction = isMoE ? getActiveParams(model) / model.params : undefined;
+
   return {
     weightsGb,
     kvCacheGb,
@@ -205,6 +276,11 @@ export function calcTotalVram(
     activeParamFraction,
     pagedAttention,
     speculativeDecoding,
+    mtpHeadGb,
+    expertOffloading: expertOffloading && isMoE ? true : undefined,
+    numGpuExperts: expertOffloading && isMoE ? numGpuExperts : undefined,
+    specMode: speculativeDecoding ? specMode : undefined,
+    offloadPenaltyFactor,
   };
 }
 
@@ -282,16 +358,28 @@ export function calcTokensPerSecond(
   quant: QuantConfig,
   gpu: GpuSpec,
   numGpus: number,
-  concurrentUsers: number
+  concurrentUsers: number,
+  specMode?: "standard" | "mtp" | undefined,
+  offloadPenaltyFactor?: number
 ): number {
   const bpw = bytesPerParam(quant);
-  // For MoE: only active expert params are streamed per decode step
   const effectiveParams = getActiveParams(model);
-  const bytesPerToken = (effectiveParams * 1e9 * bpw) / numGpus;
+  let bytesPerToken = (effectiveParams * 1e9 * bpw) / numGpus;
+
+  // Expert offloading penalty: offloaded experts need PCIe fetch, reducing effective BW
+  if (offloadPenaltyFactor && offloadPenaltyFactor > 1) {
+    bytesPerToken *= offloadPenaltyFactor;
+  }
+
   const bwBytesPerS = effectiveBandwidthGBs(gpu, numGpus) * 1e9;
-  // Batching improves utilization slightly (batch_factor), but each user waits proportionally
   const batchFactor = Math.min(1.0 + Math.log2(concurrentUsers) * 0.05, 1.3);
-  const rawTps = (bwBytesPerS / bytesPerToken) * batchFactor;
+  let rawTps = (bwBytesPerS / bytesPerToken) * batchFactor;
+
+  // MTP speculative decoding speedup: ~1.8x improved throughput
+  if (specMode === "mtp") {
+    rawTps *= 1.8;
+  }
+
   return rawTps / concurrentUsers;
 }
 

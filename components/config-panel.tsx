@@ -19,6 +19,7 @@ import {
   MODEL_FAMILIES,
   QUANT_OPTIONS,
   KV_CACHE_OPTIONS,
+  supportsMtp,
   type GpuSpec,
   type ModelSpec,
   type QuantConfig,
@@ -40,8 +41,12 @@ export interface CalcConfig {
   // Advanced inference options
   pagedAttention: boolean;
   speculativeDecoding: boolean;
-  specDraftModelSize: number; // draft model size in billions (e.g. 0.5, 1.5)
-  specNumDraftTokens: number; // tokens to draft per step (e.g. 4-8)
+  specMode: "standard" | "mtp";
+  specDraftModelSize: number;
+  specNumDraftTokens: number;
+  // Expert offloading (MoE only)
+  expertOffloading: boolean;
+  numGpuExperts: number;
 }
 
 interface ConfigPanelProps {
@@ -530,10 +535,10 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             <div className="flex-1">
               <div className="flex items-center gap-1.5 mb-1">
                 <Label className="text-xs text-muted-foreground">Speculative Decoding</Label>
-                <InfoTooltip text="Uses a small draft model to predict multiple tokens, then verifies with the main model in parallel. Can improve throughput 2-3× for high-latency models at the cost of additional VRAM for the draft model." />
+                <InfoTooltip text="Uses a small draft model or MTP heads to predict multiple tokens, then verifies with the main model in parallel. Can improve throughput 1.5-3×." />
               </div>
               <p className="text-[10px] text-muted-foreground/70">
-                Draft model predicts, main model verifies
+                Draft / MTP model predicts, main model verifies
               </p>
             </div>
             <Switch
@@ -545,43 +550,142 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
           {/* Speculative Decoding Options (shown when enabled) */}
           {config.speculativeDecoding && (
             <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-3">
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs text-muted-foreground">Draft Model Size</Label>
-                  <InfoTooltip text="Size of the draft model in billions of parameters. Smaller = faster drafting but lower acceptance rate. Common choices: 0.5B-1.5B for 7B+ main models." />
+              {/* Mode selection: Standard vs MTP */}
+              {supportsMtp(config.model) && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                      config.specMode === "standard"
+                        ? "bg-primary/20 text-primary border border-primary/40"
+                        : "bg-muted/40 text-muted-foreground border border-border hover:bg-muted"
+                    }`}
+                    onClick={() => update({ specMode: "standard" })}
+                  >
+                    Standard
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                      config.specMode === "mtp"
+                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                        : "bg-muted/40 text-muted-foreground border border-border hover:bg-muted"
+                    }`}
+                    onClick={() => update({ specMode: "mtp" })}
+                  >
+                    MTP Mode
+                  </button>
                 </div>
-                <SliderWithInput
-                  min={0.1}
-                  max={3}
-                  step={0.1}
-                  value={config.specDraftModelSize}
-                  onValueChange={(v) => update({ specDraftModelSize: v })}
-                  format={(v) => `${v.toFixed(1)}B`}
-                  unit=""
-                  markers={[0.5, 1, 1.5, 2]}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Label className="text-xs text-muted-foreground">Draft Tokens per Step</Label>
-                  <InfoTooltip text="Number of tokens the draft model generates before verification. More tokens = higher potential speedup but lower acceptance rate. Typical: 4-8 tokens." />
+              )}
+
+              {config.specMode === "standard" && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs text-muted-foreground">Draft Model Size</Label>
+                      <InfoTooltip text="Size of the draft model in billions of parameters. Smaller = faster drafting but lower acceptance rate. Common choices: 0.5B-1.5B for 7B+ main models." />
+                    </div>
+                    <SliderWithInput
+                      min={0.1}
+                      max={3}
+                      step={0.1}
+                      value={config.specDraftModelSize}
+                      onValueChange={(v) => update({ specDraftModelSize: v })}
+                      format={(v) => `${v.toFixed(1)}B`}
+                      unit=""
+                      markers={[0.5, 1, 1.5, 2]}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs text-muted-foreground">Draft Tokens per Step</Label>
+                      <InfoTooltip text="Number of tokens the draft model generates before verification. More tokens = higher potential speedup but lower acceptance rate. Typical: 4-8 tokens." />
+                    </div>
+                    <SliderWithInput
+                      min={2}
+                      max={16}
+                      step={1}
+                      value={config.specNumDraftTokens}
+                      onValueChange={(v) => update({ specNumDraftTokens: v })}
+                      format={(v) => `${v}`}
+                      unit=" tokens"
+                      markers={[2, 4, 8, 12, 16]}
+                    />
+                  </div>
+                  <p className="text-[10px] text-primary/80 leading-relaxed">
+                    Draft model adds ~{((config.specDraftModelSize * 1e9 * (config.quant.bitsPerWeight / 8)) / 1024 ** 3).toFixed(2)} GB VRAM. 
+                    Estimated speedup: {(1 + (config.specNumDraftTokens * 0.6) / 2).toFixed(1)}× at ~60% acceptance rate.
+                  </p>
+                </>
+              )}
+
+              {config.specMode === "mtp" && (
+                <div className="space-y-2">
+                  <div className="rounded-md border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
+                    <p className="text-[10px] text-cyan-400 leading-relaxed">
+                      <span className="font-semibold">MTP (Multi-Token Prediction):</span> Built-in speculative decoding
+                      using the model's native MTP heads. No separate draft model needed — adds only ~0.3 GB VRAM
+                      for the MTP heads. Compatible with DeepSeek V3 and R1 series. Estimated speedup: ~1.8×.
+                    </p>
+                  </div>
                 </div>
-                <SliderWithInput
-                  min={2}
-                  max={16}
-                  step={1}
-                  value={config.specNumDraftTokens}
-                  onValueChange={(v) => update({ specNumDraftTokens: v })}
-                  format={(v) => `${v}`}
-                  unit=" tokens"
-                  markers={[2, 4, 8, 12, 16]}
-                />
-              </div>
-              <p className="text-[10px] text-primary/80 leading-relaxed">
-                Draft model adds ~{((config.specDraftModelSize * 1e9 * (config.quant.bitsPerWeight / 8)) / 1024 ** 3).toFixed(2)} GB VRAM. 
-                Estimated speedup: {(1 + (config.specNumDraftTokens * 0.6) / 2).toFixed(1)}× at ~60% acceptance rate.
-              </p>
+              )}
             </div>
+          )}
+
+          {/* Expert Offloading (MoE only) */}
+          {isMoE && (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Label className="text-xs text-muted-foreground">Expert Offloading</Label>
+                    <InfoTooltip text="Offloads some experts to CPU RAM, keeping only N experts in VRAM. Reduces VRAM usage at the cost of PCIe latency when offloaded experts are accessed. Useful for fitting large MoE models on limited VRAM." />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70">
+                    Keep select experts on GPU, offload rest to CPU
+                  </p>
+                </div>
+                <Switch
+                  checked={config.expertOffloading}
+                  onCheckedChange={(v) => update({ expertOffloading: v })}
+                />
+              </div>
+
+              {config.expertOffloading && (
+                <div className="rounded-md border border-purple-500/20 bg-purple-500/5 p-3 space-y-2">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-xs text-muted-foreground">Experts on GPU</Label>
+                      <InfoTooltip text="Number of experts to keep in VRAM. The rest are offloaded to CPU. Active experts should always be on GPU for best performance." />
+                    </div>
+                    <SliderWithInput
+                      min={Math.min(config.model.numExpertsActive ?? 1, config.model.numExperts ?? 1)}
+                      max={config.model.numExperts ?? 8}
+                      step={1}
+                      value={config.numGpuExperts}
+                      onValueChange={(v) => update({ numGpuExperts: v })}
+                      format={(v) => `${v} / ${config.model.numExperts}`}
+                      unit=""
+                      markers={[config.model.numExpertsActive ?? 1, config.model.numExperts ?? 8]}
+                    />
+                  </div>
+                  {config.numGpuExperts < (config.model.numExpertsActive ?? 1) && (
+                    <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
+                      <p className="text-[10px] text-amber-400 leading-relaxed">
+                        Warning: Keeping fewer experts on GPU than active per token ({config.model.numExpertsActive}) will cause
+                        frequent PCIe transfers, severely degrading performance.
+                      </p>
+                    </div>
+                  )}
+                  {config.numGpuExperts >= (config.model.numExperts ?? 1) && (
+                    <p className="text-[10px] text-purple-300 leading-relaxed">
+                      All experts on GPU — no offloading needed. Reduce "Experts on GPU" to save VRAM.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {/* Paged Attention info */}
