@@ -31,6 +31,7 @@ import {
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
 import { InferenceSimulator } from "@/components/inference-simulator";
+import AccuracyChart from "@/components/accuracy-chart";
 
 interface ResultsPanelProps {
   config: CalcConfig;
@@ -201,7 +202,7 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
 
   return (
     <div className="flex flex-col gap-6 p-5 overflow-y-auto h-full">
-      {/* ?�?� Fit Status ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
+      {/* ?�?� Fit Status ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       <div className={`rounded-lg border p-4 flex items-start gap-3 ${fitCfg.bg}`}>
         <FitIcon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${fitCfg.color}`} />
         <div className="flex-1 min-w-0">
@@ -594,7 +595,10 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         promptTokens={promptTokens}
       />
 
-      {/* ?�?� Sensitivity ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
+      {/* ── Quantization Accuracy Chart ────────────────────────── */}
+      <AccuracyChart config={config} />
+
+      {/* ── Sensitivity ────────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-4">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Key Sensitivities

@@ -6,7 +6,7 @@ export type { GpuTier, GpuSpec } from "./gpu-data";
 export { GPU_LIST, GPU_PROVIDERS } from "./gpu-data";
 
 export type { ModelSource, ModelSpec } from "./model-data";
-export { MODEL_LIST, MODEL_FAMILIES, MODEL_SOURCES } from "./model-data";
+export { MODEL_LIST, MODEL_FAMILIES, MODEL_SOURCES, MODEL_ACCURACY_DB, type QuantAccuracy } from "./model-data";
 
 import type { GpuSpec } from "./gpu-data";
 import type { ModelSpec } from "./model-data";
@@ -17,34 +17,35 @@ export interface QuantConfig {
   label: string;
   bitsPerWeight: number;   // effective bits per parameter
   overheadFactor: number;  // memory overhead vs raw weights (e.g. 1.05 = 5%)
-  speedupFactor: number;   // relative decode speed vs FP32 baseline
+  speedupFactor: number;   // relative decode speed vs FP16 baseline
   qualityNote: string;
+  accuracyWarning?: string; // qualitative accuracy risk for this quant level
 }
 
 export const QUANT_OPTIONS: QuantConfig[] = [
-  { id: "fp32",    label: "FP32 (no quant)",        bitsPerWeight: 32,  overheadFactor: 1.05, speedupFactor: 0.5,  qualityNote: "Reference quality, extremely high VRAM usage" },
-  { id: "bf16",    label: "BF16",                   bitsPerWeight: 16,  overheadFactor: 1.05, speedupFactor: 1.0,  qualityNote: "Near-lossless — standard training and inference dtype" },
-  { id: "fp16",    label: "FP16",                   bitsPerWeight: 16,  overheadFactor: 1.05, speedupFactor: 1.0,  qualityNote: "Near-lossless; same size as BF16, slightly lower range" },
-  { id: "fp8_e4m3",label: "FP8 E4M3",               bitsPerWeight: 8,   overheadFactor: 1.06, speedupFactor: 1.7,  qualityNote: "Minimal quality loss; supported on H100/H200/B200" },
-  { id: "q8_0",   label: "Q8_0 (GGUF)",             bitsPerWeight: 8,   overheadFactor: 1.08, speedupFactor: 1.6,  qualityNote: "Minimal quality loss, ~2× memory saving vs BF16" },
-  { id: "q6_k",   label: "Q6_K (GGUF)",             bitsPerWeight: 6.56,overheadFactor: 1.08, speedupFactor: 1.9,  qualityNote: "Very low quality loss, good memory efficiency" },
-  { id: "q5_k_m", label: "Q5_K_M (GGUF)",           bitsPerWeight: 5.5, overheadFactor: 1.08, speedupFactor: 2.1,  qualityNote: "Balanced quality and memory efficiency" },
-  { id: "q5_k_s", label: "Q5_K_S (GGUF)",           bitsPerWeight: 5.0, overheadFactor: 1.08, speedupFactor: 2.15, qualityNote: "Slightly smaller than Q5_K_M with minor quality drop" },
-  { id: "q4_k_m", label: "Q4_K_M (GGUF)",           bitsPerWeight: 4.5, overheadFactor: 1.08, speedupFactor: 2.5,  qualityNote: "Popular choice; slight quality loss, major memory saving" },
-  { id: "q4_k_s", label: "Q4_K_S (GGUF)",           bitsPerWeight: 4.37,overheadFactor: 1.08, speedupFactor: 2.55, qualityNote: "Slightly smaller variant of Q4_K_M" },
-  { id: "q4_0",   label: "Q4_0 (GGUF)",             bitsPerWeight: 4.0, overheadFactor: 1.06, speedupFactor: 2.6,  qualityNote: "More quality loss, very memory efficient" },
-  { id: "iq4_xs", label: "IQ4_XS (GGUF)",           bitsPerWeight: 4.25,overheadFactor: 1.06, speedupFactor: 2.5,  qualityNote: "iQuant 4-bit; better quality than Q4_0 at similar size" },
-  { id: "q3_k_m", label: "Q3_K_M (GGUF)",           bitsPerWeight: 3.5, overheadFactor: 1.08, speedupFactor: 2.8,  qualityNote: "Noticeable quality loss; only for resource-limited setups" },
-  { id: "q3_k_s", label: "Q3_K_S (GGUF)",           bitsPerWeight: 3.0, overheadFactor: 1.08, speedupFactor: 2.85, qualityNote: "Further quality degradation vs K_M variant" },
-  { id: "q2_k",   label: "Q2_K (GGUF)",             bitsPerWeight: 2.63,overheadFactor: 1.08, speedupFactor: 3.0,  qualityNote: "Significant quality loss — minimum VRAM footprint" },
-  { id: "iq1_m",  label: "IQ1_M (GGUF 1-bit)",      bitsPerWeight: 1.75,overheadFactor: 1.08, speedupFactor: 3.5,  qualityNote: "Very poor quality — experimental, only for huge models" },
-  { id: "int8",   label: "INT8 (bitsandbytes)",      bitsPerWeight: 8,   overheadFactor: 1.12, speedupFactor: 1.5,  qualityNote: "Good quality, requires CUDA; widely used with bitsandbytes" },
-  { id: "nf4",    label: "NF4 / INT4 (QLoRA)",       bitsPerWeight: 4,   overheadFactor: 1.15, speedupFactor: 2.3,  qualityNote: "4-bit NormalFloat; used in QLoRA fine-tuning and inference" },
-  { id: "awq",    label: "AWQ (4-bit)",               bitsPerWeight: 4,   overheadFactor: 1.10, speedupFactor: 2.8,  qualityNote: "Activation-aware quantization; excellent quality/speed trade-off" },
-  { id: "awq_2",  label: "AWQ (2-bit)",               bitsPerWeight: 2,   overheadFactor: 1.12, speedupFactor: 3.2,  qualityNote: "Aggressive 2-bit AWQ; significant quality loss" },
-  { id: "gptq4",  label: "GPTQ 4-bit",               bitsPerWeight: 4,   overheadFactor: 1.10, speedupFactor: 2.4,  qualityNote: "Post-training quantization; widely used on HuggingFace" },
-  { id: "gptq8",  label: "GPTQ 8-bit",               bitsPerWeight: 8,   overheadFactor: 1.10, speedupFactor: 1.6,  qualityNote: "High quality GPTQ; minimal accuracy loss" },
-  { id: "gguf_f16",label: "GGUF F16",                bitsPerWeight: 16,  overheadFactor: 1.03, speedupFactor: 1.0,  qualityNote: "Full precision in GGUF format for llama.cpp / Ollama" },
+  { id: "fp32",    label: "FP32 (no quant)",        bitsPerWeight: 32,  overheadFactor: 1.05, speedupFactor: 0.5,  qualityNote: "Reference quality, extremely high VRAM usage", accuracyWarning: "Baseline" },
+  { id: "bf16",    label: "BF16",                   bitsPerWeight: 16,  overheadFactor: 1.05, speedupFactor: 1.0,  qualityNote: "Near-lossless — standard training and inference dtype", accuracyWarning: "Baseline" },
+  { id: "fp16",    label: "FP16",                   bitsPerWeight: 16,  overheadFactor: 1.05, speedupFactor: 1.0,  qualityNote: "Near-lossless; same size as BF16, slightly lower range", accuracyWarning: "Baseline" },
+  { id: "fp8_e4m3",label: "FP8 E4M3",               bitsPerWeight: 8,   overheadFactor: 1.06, speedupFactor: 1.7,  qualityNote: "Minimal quality loss; supported on H100/H200/B200", accuracyWarning: "~0.5-1.0 pt drop on MMLU-Pro" },
+  { id: "q8_0",   label: "Q8_0 (GGUF)",             bitsPerWeight: 8,   overheadFactor: 1.08, speedupFactor: 1.6,  qualityNote: "Minimal quality loss, ~2× memory saving vs BF16", accuracyWarning: "~1-2 pt drop on MMLU-Pro" },
+  { id: "q6_k",   label: "Q6_K (GGUF)",             bitsPerWeight: 6.56,overheadFactor: 1.08, speedupFactor: 1.9,  qualityNote: "Very low quality loss, good memory efficiency", accuracyWarning: "~1.5-3 pt drop" },
+  { id: "q5_k_m", label: "Q5_K_M (GGUF)",           bitsPerWeight: 5.5, overheadFactor: 1.08, speedupFactor: 2.1,  qualityNote: "Balanced quality and memory efficiency", accuracyWarning: "~2-4 pt drop" },
+  { id: "q5_k_s", label: "Q5_K_S (GGUF)",           bitsPerWeight: 5.0, overheadFactor: 1.08, speedupFactor: 2.15, qualityNote: "Slightly smaller than Q5_K_M with minor quality drop", accuracyWarning: "~2.5-4.5 pt drop" },
+  { id: "q4_k_m", label: "Q4_K_M (GGUF)",           bitsPerWeight: 4.5, overheadFactor: 1.08, speedupFactor: 2.5,  qualityNote: "Popular choice; slight quality loss, major memory saving", accuracyWarning: "~3-6 pt drop (Gemma 4 QAT: ~2 pt)" },
+  { id: "q4_k_s", label: "Q4_K_S (GGUF)",           bitsPerWeight: 4.37,overheadFactor: 1.08, speedupFactor: 2.55, qualityNote: "Slightly smaller variant of Q4_K_M", accuracyWarning: "~3-7 pt drop" },
+  { id: "q4_0",   label: "Q4_0 (GGUF)",             bitsPerWeight: 4.0, overheadFactor: 1.06, speedupFactor: 2.6,  qualityNote: "More quality loss, very memory efficient", accuracyWarning: "~4-8 pt drop" },
+  { id: "iq4_xs", label: "IQ4_XS (GGUF)",           bitsPerWeight: 4.25,overheadFactor: 1.06, speedupFactor: 2.5,  qualityNote: "iQuant 4-bit; better quality than Q4_0 at similar size", accuracyWarning: "~3-7 pt drop" },
+  { id: "q3_k_m", label: "Q3_K_M (GGUF)",           bitsPerWeight: 3.5, overheadFactor: 1.08, speedupFactor: 2.8,  qualityNote: "Noticeable quality loss; only for resource-limited setups", accuracyWarning: "~5-10 pt drop" },
+  { id: "q3_k_s", label: "Q3_K_S (GGUF)",           bitsPerWeight: 3.0, overheadFactor: 1.08, speedupFactor: 2.85, qualityNote: "Further quality degradation vs K_M variant", accuracyWarning: "~6-12 pt drop" },
+  { id: "q2_k",   label: "Q2_K (GGUF)",             bitsPerWeight: 2.63,overheadFactor: 1.08, speedupFactor: 3.0,  qualityNote: "Significant quality loss — minimum VRAM footprint", accuracyWarning: "~8-15 pt drop" },
+  { id: "iq1_m",  label: "IQ1_M (GGUF 1-bit)",      bitsPerWeight: 1.75,overheadFactor: 1.08, speedupFactor: 3.5,  qualityNote: "Very poor quality — experimental, only for huge models", accuracyWarning: "~12-20 pt drop" },
+  { id: "int8",   label: "INT8 (bitsandbytes)",      bitsPerWeight: 8,   overheadFactor: 1.12, speedupFactor: 1.5,  qualityNote: "Good quality, requires CUDA; widely used with bitsandbytes", accuracyWarning: "~1-2 pt drop" },
+  { id: "nf4",    label: "NF4 / INT4 (QLoRA)",       bitsPerWeight: 4,   overheadFactor: 1.15, speedupFactor: 2.3,  qualityNote: "4-bit NormalFloat; used in QLoRA fine-tuning and inference", accuracyWarning: "~3-7 pt drop" },
+  { id: "awq",    label: "AWQ (4-bit)",               bitsPerWeight: 4,   overheadFactor: 1.10, speedupFactor: 2.8,  qualityNote: "Activation-aware quantization; excellent quality/speed trade-off", accuracyWarning: "~3-6 pt drop" },
+  { id: "awq_2",  label: "AWQ (2-bit)",               bitsPerWeight: 2,   overheadFactor: 1.12, speedupFactor: 3.2,  qualityNote: "Aggressive 2-bit AWQ; significant quality loss", accuracyWarning: "~8-15 pt drop" },
+  { id: "gptq4",  label: "GPTQ 4-bit",               bitsPerWeight: 4,   overheadFactor: 1.10, speedupFactor: 2.4,  qualityNote: "Post-training quantization; widely used on HuggingFace", accuracyWarning: "~3-7 pt drop" },
+  { id: "gptq8",  label: "GPTQ 8-bit",               bitsPerWeight: 8,   overheadFactor: 1.10, speedupFactor: 1.6,  qualityNote: "High quality GPTQ; minimal accuracy loss", accuracyWarning: "~1-2 pt drop" },
+  { id: "gguf_f16",label: "GGUF F16",                bitsPerWeight: 16,  overheadFactor: 1.03, speedupFactor: 1.0,  qualityNote: "Full precision in GGUF format for llama.cpp / Ollama", accuracyWarning: "Baseline" },
 ];
 
 // ─── KV Cache Precision ───────────────────────────────────────────────────────
