@@ -6,10 +6,10 @@ export type { GpuTier, GpuSpec } from "./gpu-data";
 export { GPU_LIST, GPU_PROVIDERS } from "./gpu-data";
 
 export type { ModelSource, ModelSpec } from "./model-data";
-export { MODEL_LIST, MODEL_FAMILIES, MODEL_SOURCES, MODEL_ACCURACY_DB, type QuantAccuracy } from "./model-data";
+export { MODEL_LIST, MODEL_FAMILIES, MODEL_SOURCES, MODEL_ACCURACY_DB, type QuantAccuracy, type ModelType } from "./model-data";
 
 import type { GpuSpec } from "./gpu-data";
-import type { ModelSpec } from "./model-data";
+import type { ModelSpec, ModelType } from "./model-data";
 
 // ─── Quantization ─────────────────────────────────────────────────────────────
 export interface QuantConfig {
@@ -310,6 +310,11 @@ export function effectiveBandwidthGBs(gpu: GpuSpec, numGpus: number): number {
  *   all experts are loaded. The "2×" accounts for multiply-accumulate.
  *
  * TTFT_s = FLOPs / (tflops × 10¹² × numGpus × parallel_efficiency)
+ *
+ * For diffusion models: TTFT is higher because the prefill step must
+ * run through the encoder, then the decoder performs multiple denoising
+ * iterations on the 256-token canvas before first output is ready.
+ * Typical: 3-8 denoising steps × model forward pass per step.
  */
 export function calcTTFT(
   model: ModelSpec,
@@ -324,7 +329,13 @@ export function calcTTFT(
   // Lower precision may not reach peak TFLOPS on older hardware
   const quantTflopsScale = quant.bitsPerWeight >= 8 ? 1.0 : 0.85;
   const flops = 2 * activeP * 1e9 * promptTokens;
-  const timeS = flops / (effectiveTflops * 1e12 * quantTflopsScale);
+  let timeS = flops / (effectiveTflops * 1e12 * quantTflopsScale);
+  
+  // Diffusion models: multiply TTFT by denoising steps (3-8 typically)
+  if (model.modelType === "diffusion") {
+    timeS *= 5; // ~5 denoising iterations average for first token
+  }
+  
   return timeS * 1000; // ms
 }
 
@@ -352,6 +363,10 @@ export function calcTTFT(
  *   Note: some frameworks pre-fetch all expert weights; this gives a
  *   conservative (best-case) estimate using only active params.
  *
+ *   If totalVram exceeds available GPU VRAM, the model falls back to
+ *   CPU offloading / page swapping, which reduces effective bandwidth
+ *   by a configurable penalty factor (default 0.1 = 10× slowdown).
+ *
  * tps = eff_bandwidth_bytes_s / bytes_per_token / concurrent_users
  */
 export function calcTokensPerSecond(
@@ -361,7 +376,8 @@ export function calcTokensPerSecond(
   numGpus: number,
   concurrentUsers: number,
   specMode?: "standard" | "mtp" | undefined,
-  offloadPenaltyFactor?: number
+  offloadPenaltyFactor?: number,
+  totalVramGb?: number  // optional: total VRAM needed for overflow check
 ): number {
   const bpw = bytesPerParam(quant);
   const effectiveParams = getActiveParams(model);
@@ -372,9 +388,29 @@ export function calcTokensPerSecond(
     bytesPerToken *= offloadPenaltyFactor;
   }
 
-  const bwBytesPerS = effectiveBandwidthGBs(gpu, numGpus) * 1e9;
+  // VRAM overflow penalty: if model doesn't fit, weights spill to CPU/RAM
+  // This causes massive bandwidth reduction (PCIe ~32 GB/s vs HBM ~3 TB/s)
+  let overflowPenalty = 1;
+  if (totalVramGb !== undefined) {
+    const available = gpu.vramGb * numGpus;
+    if (totalVramGb > available) {
+      // Severe overflow: model must page between GPU and CPU RAM
+      // Effective bandwidth drops from HBM to PCIe ~10-30 GB/s per GPU
+      const neededGpus = Math.ceil(totalVramGb / (gpu.vramGb * 0.92));
+      overflowPenalty = Math.max(available / (totalVramGb * 0.3), 0.02);
+    }
+  }
+
+  const bwBytesPerS = effectiveBandwidthGBs(gpu, numGpus) * 1e9 * overflowPenalty;
   const batchFactor = Math.min(1.0 + Math.log2(concurrentUsers) * 0.05, 1.3);
   let rawTps = (bwBytesPerS / bytesPerToken) * batchFactor;
+
+  // Diffusion models: shift bottleneck from memory bandwidth to compute
+  // They generate 256-token canvases in parallel, ~4x faster than AR models
+  // on dedicated GPUs. However, TTFT is higher due to denoising iterations.
+  if (model.modelType === "diffusion") {
+    rawTps *= 3.5; // ~4x speedup from compute-bound parallel generation
+  }
 
   // MTP speculative decoding speedup: ~1.8x improved throughput
   if (specMode === "mtp") {

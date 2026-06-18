@@ -175,8 +175,8 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   );
 
   const tps = useMemo(
-    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor),
-    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor]
+    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, vram.totalGb),
+    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, vram.totalGb]
   );
 
   const totalAvailableVram = gpu.vramGb * numGpus;
@@ -340,6 +340,37 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           sub={`Per user · ${totalSystemTps.toFixed(0)} tok/s total · ${effectiveBw.toFixed(0)} GB/s eff. BW`}
         />
       </div>
+
+      {/* ── VRAM Overflow Warning ────────────────────────────── */}
+      {fitStatus === "overflow" && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <span className="text-red-400 font-semibold">VRAM Insufficient ({fmtGb(vram.totalGb)} needed, {fmtGb(totalAvailableVram)} available):</span>{" "}
+            Model weights and KV cache exceed GPU memory. The simulator below shows{" "}
+            <span className="text-foreground">estimated throughput with severe CPU offloading penalty</span>{" "}
+            — effective bandwidth drops from ~{effectiveBw.toFixed(0)} GB/s (HBM) to ~{(effectiveBw * Math.min((totalAvailableVram / vram.totalGb) * 0.3, 0.1)).toFixed(0)} GB/s (PCIe page swap).{" "}
+            {numGpus}×{gpu.name} can hold at most ~{(gpu.vramGb * numGpus * 0.92).toFixed(0)} GB.{" "}
+            <span className="text-foreground font-medium">Recommendation: use more/faster GPUs, reduce context length, or switch to lower quantization.</span>{" "}
+            Despite the overflow, the simulation estimates token speed assuming partial CPU offloading — expect significantly slower throughput than the fit case.
+          </div>
+        </div>
+      )}
+
+      {/* ── Diffusion Model Notice ───────────────────────────── */}
+      {model.modelType === "diffusion" && (
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 flex items-start gap-2.5">
+          <Zap className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <span className="text-cyan-400 font-semibold">Diffusion Model:</span>{" "}
+            {model.name} uses a diffusion-based text generation process rather than standard autoregressive decoding.
+            This means significantly higher TTFT (denoising iterations before first token) but potentially{" "}
+            <span className="text-foreground">faster overall token generation</span> once denoising converges,
+            as each step produces higher-quality tokens requiring fewer retries.
+            The simulation estimates {Math.round(ttft * 3)} ms TTFT (×3 for denoising) and ~{tps.toFixed(0)} tok/s decode.
+          </div>
+        </div>
+      )}
 
       {/* ?�?� MoE explanation callout ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?� */}
       {isMoE && (

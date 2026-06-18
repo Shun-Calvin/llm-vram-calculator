@@ -3,6 +3,7 @@
 // MoE models include numExperts / numExpertsActive for correct VRAM calculations.
 
 export type ModelSource = "huggingface" | "ollama" | "both";
+export type ModelType = "ar" | "diffusion"; // autoregressive vs. diffusion-based generation
 
 export interface ModelSpec {
   id: string;
@@ -21,8 +22,10 @@ export interface ModelSpec {
   family: string;
   vocabSize: number;
   tiedEmbeddings: boolean;
-  notes?: string;
   releaseYear?: number;
+  notes?: string;
+  /** Model generation type: "ar" for standard autoregressive (one token at a time), "diffusion" for block-based parallel generation */
+  modelType?: "autoregressive" | "diffusion";
 }
 
 // ─── Quantization Accuracy Data ───────────────────────────────────────────────
@@ -205,7 +208,7 @@ export const MODEL_LIST: ModelSpec[] = [
   // Experimental discrete diffusion LLM built on Gemma 4 26B A4B MoE backbone.
   // Generates 256 tokens in parallel per denoising step (canvas size).
   // Up to 4x faster inference on GPUs; same quantization profile as Gemma 4 26B.
-  { id: "diffusiongemma_26b_a4b", name: "DiffusionGemma 26B A4B",   params: 26.0,   activeParams: 4.0, layers: 46, hiddenDim: 4096, numHeads: 16, numKvHeads: 1, intermediateSize: 512, maxContextTokens: 262144, numExperts: 128, numExpertsActive: 3, source: "huggingface", family: "DiffusionGemma", vocabSize: 256000, tiedEmbeddings: true, releaseYear: 2026, notes: "Discrete diffusion LLM; 256-token canvas; 4x faster text gen; MoE weights share Gemma 4 profile" },
+  { id: "diffusiongemma_26b_a4b", name: "DiffusionGemma 26B-A4B (MoE)", params: 26.0, activeParams: 3.8, layers: 44, hiddenDim: 4096, numHeads: 32, numKvHeads: 4, intermediateSize: 1024, maxContextTokens: 8192, numExperts: 64, numExpertsActive: 4, source: "both", family: "DiffusionGemma", vocabSize: 256000, tiedEmbeddings: false, releaseYear: 2026, notes: "64 experts, 4 active; diffusion-based text generation (parallel block denoising, not autoregressive)", modelType: "diffusion" },
   // ── Qwen3.6 ────────────────────────────────────────────────────────────
   // Dense and MoE variants. Hybrid Gated DeltaNet + full attention (3:1 ratio).
   // Qwen3.6-27B is the dense flagship; beats Qwen3.5-397B MoE on coding.
@@ -321,6 +324,12 @@ export const MODEL_LIST: ModelSpec[] = [
   { id: "glmz1_9b",           name: "GLM-Z1 9B Rumination",         params: 9.4,   layers: 40,  hiddenDim: 4096,  numHeads: 32,  numKvHeads: 2,   intermediateSize: 13696, maxContextTokens: 131072, source: "huggingface", family: "GLM",      vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Reasoning / rumination model; extended thinking budget" },
   { id: "glmz1_32b",          name: "GLM-Z1 32B Rumination",        params: 32.0,  layers: 62,  hiddenDim: 5120,  numHeads: 40,  numKvHeads: 8,   intermediateSize: 13696, maxContextTokens: 131072, source: "huggingface", family: "GLM",      vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Reasoning model; top open-source score on AIME 2025" },
   { id: "glmz1_32b_moe",      name: "GLM-Z1 32B MoE Rumination",   params: 96.0,  activeParams: 32.0, layers: 62, hiddenDim: 5120, numHeads: 40, numKvHeads: 8, intermediateSize: 13696, maxContextTokens: 131072, numExperts: 8, numExpertsActive: 3, source: "huggingface", family: "GLM", vocabSize: 151552, tiedEmbeddings: false, releaseYear: 2025, notes: "Sparse 96B total, 32B active; 8 experts, 3 active" },
+  // GLM-5: 744B MoE with DSA attention — complex systems engineering
+  { id: "glm5",                 name: "GLM-5 744B (MoE)",          params: 744,   activeParams: 40,  layers: 72,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 16384, maxContextTokens: 200704, source: "huggingface", family: "GLM",      vocabSize: 217624, tiedEmbeddings: false, releaseYear: 2025, notes: "256 routed + 1 shared expert, 8+1 active; DSA attention; agentic engineering" },
+  // GLM-5.1: Flagship agentic model — same architecture as GLM-5 with 202K context
+  { id: "glm5_1",               name: "GLM-5.1 754B (MoE)",        params: 754,   activeParams: 40,  layers: 78,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 16384, maxContextTokens: 202752, source: "huggingface", family: "GLM",      vocabSize: 217624, tiedEmbeddings: false, releaseYear: 2026, notes: "256 routed + 1 shared, 8+1 active; GlmMoeDSA; 202K ctx, 131K output; SWE-Bench Pro 58.4" },
+  // GLM-5.2: Flagship with 1M context, MTP, thinking effort levels
+  { id: "glm5_2",               name: "GLM-5.2 753B (MoE)",        params: 753,   activeParams: 40,  layers: 78,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 16384, maxContextTokens: 1048576, source: "huggingface", family: "GLM",      vocabSize: 217624, tiedEmbeddings: false, releaseYear: 2026, notes: "Index share MoE; 1M ctx, 131K output; MTP heads; high/max thinking effort" },
   // ── Qwen2.5-Coder ────────────────────────────────────────────────────────
   // Code-specialized models built on the Qwen2.5 architecture.
   // All dimensions verified from the official technical report (arXiv:2409.12186)

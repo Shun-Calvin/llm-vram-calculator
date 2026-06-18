@@ -670,11 +670,90 @@ export default function ConfigPanel({ config, onChange }: ConfigPanelProps) {
                       markers={[config.model.numExpertsActive ?? 1, config.model.numExperts ?? 8]}
                     />
                   </div>
+
+                  {/* Recommended expert count suggestion */}
+                  {(() => {
+                    const totalExperts = config.model.numExperts ?? 1;
+                    const activeExperts = config.model.numExpertsActive ?? 1;
+                    const recommendedMin = Math.max(activeExperts, Math.ceil(totalExperts * 0.15));
+                    const recommendedMax = Math.min(totalExperts, Math.ceil(totalExperts * 0.4));
+                    const expertWeightFrac = 0.7;
+                    const fullWeightsVram = (config.model.params * 1e9 * (config.quant.bitsPerWeight / 8) * config.quant.overheadFactor) / 1024 ** 3;
+                    const offloadedFrac = 1 - config.numGpuExperts / totalExperts;
+                    const savedVram = fullWeightsVram * offloadedFrac * expertWeightFrac;
+
+                    return (
+                      <>
+                        {/* Suggestion box */}
+                        {config.numGpuExperts < recommendedMin && (
+                          <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-2">
+                            <p className="text-[10px] text-amber-400 leading-relaxed">
+                              <span className="font-semibold">💡 Suggestion:</span> Try keeping at least{" "}
+                              <span className="font-mono font-bold">{recommendedMin} experts</span> on GPU.
+                              {activeExperts > 1 && (
+                                <span>
+                                  {" "}Your model activates {activeExperts} experts per token, so fewer than this causes frequent PCIe transfers.
+                                </span>
+                              )}
+                              {activeExperts === 1 && (
+                                <span>
+                                  {" "}
+                                  Even with 1 active expert, keeping ~15% of experts on GPU provides load-balancing buffer when routing shifts.
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* VRAM savings display */}
+                        {config.numGpuExperts < totalExperts && (
+                          <div className="rounded-md border border-purple-500/20 bg-purple-500/5 px-2.5 py-2">
+                            <p className="text-[10px] text-purple-300 leading-relaxed">
+                              <span className="font-semibold">VRAM saved:</span>{" "}
+                              ~{savedVram.toFixed(2)} GB on weights (expert FFN layers are ~70% of total params).
+                              <span className="text-muted-foreground ml-1">
+                                {" "}Offloaded experts: {(totalExperts - config.numGpuExperts)}/{totalExperts}
+                              </span>
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Optimal range indicator */}
+                        {config.numGpuExperts >= recommendedMin && config.numGpuExperts <= recommendedMax && (
+                          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2">
+                            <p className="text-[10px] text-emerald-400 leading-relaxed">
+                              <span className="font-semibold">✅ Recommended range:</span>{" "}
+                              {recommendedMin}–{recommendedMax} experts on GPU balances VRAM savings with performance.
+                              <span className="text-muted-foreground ml-1">
+                                {" "}Keeping {((config.numGpuExperts / totalExperts) * 100).toFixed(0)}% of experts on GPU.
+                              </span>
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Explanation tooltip */}
+                        <div className="rounded-md border border-border bg-muted/20 px-2.5 py-2">
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">
+                            <span className="font-semibold text-foreground">Why this matters:</span>{" "}
+                            In MoE models, only {activeExperts} of {totalExperts} experts compute per token,
+                            but all expert weights must be loaded into VRAM. Offloading experts to CPU saves{" "}
+                            ~{savedVram.toFixed(1)} GB but adds PCIe transfer latency when offloaded experts are needed.
+                            {config.numGpuExperts < activeExperts && (
+                              <span className="text-red-400 ml-1 font-semibold">
+                                ⚠️ WARNING: Fewer experts on GPU than active per token ({activeExperts}) — this will cause severe PCIe thrashing!
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
+
                   {config.numGpuExperts < (config.model.numExpertsActive ?? 1) && (
-                    <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
-                      <p className="text-[10px] text-amber-400 leading-relaxed">
-                        Warning: Keeping fewer experts on GPU than active per token ({config.model.numExpertsActive}) will cause
-                        frequent PCIe transfers, severely degrading performance.
+                    <div className="rounded-md border border-red-500/20 bg-red-500/5 px-2 py-1.5">
+                      <p className="text-[10px] text-red-400 leading-relaxed">
+                        Critical: Keeping fewer experts on GPU than active per token ({config.model.numExpertsActive}) will cause
+                        frequent PCIe transfers, severely degrading performance. Increase "Experts on GPU" immediately.
                       </p>
                     </div>
                   )}

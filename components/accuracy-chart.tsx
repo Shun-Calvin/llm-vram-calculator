@@ -64,6 +64,50 @@ const ACCURACY_DATA: Record<string, Array<{ quantId: string; delta: number; note
     { quantId: "q2_k", delta: -22.0 },
     { quantId: "iq1_m", delta: -28.0 },
   ],
+  // GLM-5.1: Same architecture as GLM-5 (754B MoE, 40B active) — slightly improved training
+  "glm5.1": [
+    { quantId: "bf16", delta: 0, note: "Baseline" },
+    { quantId: "fp8_e4m3", delta: -1.0 },
+    { quantId: "gptq8", delta: -1.5 },
+    { quantId: "q8_0", delta: -2.0, note: "Minimal loss" },
+    { quantId: "int8", delta: -2.0 },
+    { quantId: "q6_k", delta: -3.5 },
+    { quantId: "q5_k_m", delta: -5.0 },
+    { quantId: "q5_k_s", delta: -6.0 },
+    { quantId: "q4_k_m", delta: -7.0, note: "MoE 754B — larger models tolerate quantization better" },
+    { quantId: "q4_k_s", delta: -8.0 },
+    { quantId: "awq", delta: -8.0 },
+    { quantId: "gptq4", delta: -9.0 },
+    { quantId: "nf4", delta: -9.5 },
+    { quantId: "iq4_xs", delta: -9.5 },
+    { quantId: "q4_0", delta: -11.0 },
+    { quantId: "q3_k_m", delta: -14.0 },
+    { quantId: "q3_k_s", delta: -17.0 },
+    { quantId: "q2_k", delta: -22.0 },
+    { quantId: "iq1_m", delta: -28.0 },
+  ],
+  // GLM-5.2: Same architecture as GLM-5.1 (753B MoE, 40B active) — 1M context, MTP
+  "glm5.2": [
+    { quantId: "bf16", delta: 0, note: "Baseline" },
+    { quantId: "fp8_e4m3", delta: -1.0 },
+    { quantId: "gptq8", delta: -1.5 },
+    { quantId: "q8_0", delta: -2.0, note: "Minimal loss" },
+    { quantId: "int8", delta: -2.0 },
+    { quantId: "q6_k", delta: -3.5 },
+    { quantId: "q5_k_m", delta: -5.0 },
+    { quantId: "q5_k_s", delta: -6.0 },
+    { quantId: "q4_k_m", delta: -7.0, note: "753B MoE — same family as GLM-5/5.1" },
+    { quantId: "q4_k_s", delta: -8.0 },
+    { quantId: "awq", delta: -8.0 },
+    { quantId: "gptq4", delta: -9.0 },
+    { quantId: "nf4", delta: -9.5 },
+    { quantId: "iq4_xs", delta: -9.5 },
+    { quantId: "q4_0", delta: -11.0 },
+    { quantId: "q3_k_m", delta: -14.0 },
+    { quantId: "q3_k_s", delta: -17.0 },
+    { quantId: "q2_k", delta: -22.0 },
+    { quantId: "iq1_m", delta: -28.0 },
+  ],
   // Qwen3.6: Dense 27B — moderate quantization tolerance
   "qwen3.6": [
     { quantId: "bf16", delta: 0, note: "Baseline" },
@@ -152,6 +196,50 @@ const ACCURACY_DATA: Record<string, Array<{ quantId: string; delta: number; note
     { quantId: "q2_k", delta: -14.0 },
     { quantId: "iq1_m", delta: -18.0 },
   ],
+  // Qwen3-Coder: MoE coding model — similar to Qwen3 30B A3B but code-optimized
+  "qwen3-coder": [
+    { quantId: "bf16", delta: 0, note: "Baseline" },
+    { quantId: "fp8_e4m3", delta: -0.8 },
+    { quantId: "gptq8", delta: -1.5 },
+    { quantId: "q8_0", delta: -2.0, note: "Minimal loss" },
+    { quantId: "int8", delta: -2.0 },
+    { quantId: "q6_k", delta: -3.0 },
+    { quantId: "q5_k_m", delta: -4.0 },
+    { quantId: "q5_k_s", delta: -5.0 },
+    { quantId: "q4_k_m", delta: -5.5, note: "Popular sweet spot for coding tasks" },
+    { quantId: "q4_k_s", delta: -6.0 },
+    { quantId: "awq", delta: -5.0 },
+    { quantId: "gptq4", delta: -6.0 },
+    { quantId: "nf4", delta: -6.5 },
+    { quantId: "iq4_xs", delta: -6.5 },
+    { quantId: "q4_0", delta: -7.0 },
+    { quantId: "q3_k_m", delta: -9.0 },
+    { quantId: "q3_k_s", delta: -11.0 },
+    { quantId: "q2_k", delta: -14.0 },
+    { quantId: "iq1_m", delta: -18.0 },
+  ],
+  // Qwen3-Coder 480B: Massive MoE coding model — very tolerant to quantization
+  "qwen3-coder-480b": [
+    { quantId: "bf16", delta: 0, note: "Baseline" },
+    { quantId: "fp8_e4m3", delta: -1.0 },
+    { quantId: "gptq8", delta: -1.5 },
+    { quantId: "q8_0", delta: -2.0, note: "Minimal loss" },
+    { quantId: "int8", delta: -2.0 },
+    { quantId: "q6_k", delta: -3.0 },
+    { quantId: "q5_k_m", delta: -4.5 },
+    { quantId: "q5_k_s", delta: -5.5 },
+    { quantId: "q4_k_m", delta: -6.0, note: "480B MoE — very tolerant at Q4" },
+    { quantId: "q4_k_s", delta: -7.0 },
+    { quantId: "awq", delta: -6.5 },
+    { quantId: "gptq4", delta: -7.5 },
+    { quantId: "nf4", delta: -8.0 },
+    { quantId: "iq4_xs", delta: -8.0 },
+    { quantId: "q4_0", delta: -9.0 },
+    { quantId: "q3_k_m", delta: -12.0 },
+    { quantId: "q3_k_s", delta: -15.0 },
+    { quantId: "q2_k", delta: -18.0 },
+    { quantId: "iq1_m", delta: -24.0 },
+  ],
 };
 
 // Weight VRAM for a given quant
@@ -183,7 +271,11 @@ export default function AccuracyChart({ config }: AccuracyChartProps) {
     const name = model.name.toLowerCase();
     if (name.includes("gemma 4") || name.includes("gemma-4")) return "gemma4";
     if (name.includes("diffusiongemma") || name.includes("diffusion-gemma")) return "diffusiongemma";
-    if (name.includes("glm-5") || name.includes("glm5") || name.includes("glm-5")) return "glm5";
+    if (name.includes("glm-5.2") || name.includes("glm5.2")) return "glm5.2";
+    if (name.includes("glm-5.1") || name.includes("glm5.1")) return "glm5.1";
+    if (name.includes("glm-5") || name.includes("glm 5") || name.includes("glm-5 ")) return "glm5";
+    if (name.includes("qwen3-coder-480") || name.includes("qwen3-coder 480")) return "qwen3-coder-480b";
+    if (name.includes("qwen3-coder") || name.includes("qwen3 coder")) return "qwen3-coder";
     if (name.includes("qwen3.6") || name.includes("qwen-3.6")) {
       return model.numExperts ? "qwen3.6-moe" : "qwen3.6";
     }
