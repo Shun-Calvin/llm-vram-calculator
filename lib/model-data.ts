@@ -17,6 +17,7 @@ export interface ModelSpec {
   intermediateSize: number;  // FFN intermediate size (per expert for MoE)
   numExperts?: number;       // total experts (MoE only)
   numExpertsActive?: number; // experts active per token (MoE only)
+  numSharedExperts?: number; // shared experts (e.g., Hy3 has 1 always-active shared expert)
   maxContextTokens: number;
   source: ModelSource;
   family: string;
@@ -48,6 +49,7 @@ export interface QuantAccuracy {
   q3Km: number;              // Score at Q3_K_M
   q3Ks: number;              // Score at Q3_K_S
   q2K: number;               // Score at Q2_K
+  notes?: string;            // Optional notes (e.g., QAT-optimized)
 }
 
 export const MODEL_ACCURACY_DB: Record<string, QuantAccuracy> = {
@@ -147,6 +149,30 @@ export const MODEL_ACCURACY_DB: Record<string, QuantAccuracy> = {
   "qwen35_397b_a17b": {
     bf16Baseline: 76.8, fp8: 75.9, int8: 76.3, nf4: 74.3, awq: 75.2, gptq: 74.8,
     q4Km: 72.0, q4Ks: 71.5, q4_0: 70.7, q3Km: 68.0, q3Ks: 66.1, q2K: 61.0,
+  },
+  "kimi_k2": {
+    bf16Baseline: 75.0, fp8: 74.2, int8: 74.6, nf4: 72.8, awq: 73.5, gptq: 73.2,
+    q4Km: 68.5, q4Ks: 68.0, q4_0: 67.0, q3Km: 63.0, q3Ks: 61.0, q2K: 55.0,
+  },
+  "kimi_k2_thinking": {
+    bf16Baseline: 75.0, fp8: 74.2, int8: 74.6, nf4: 72.8, awq: 73.5, gptq: 73.2,
+    q4Km: 68.5, q4Ks: 68.0, q4_0: 67.0, q3Km: 63.0, q3Ks: 61.0, q2K: 55.0,
+  },
+  "kimi_k2_5": {
+    bf16Baseline: 75.0, fp8: 74.2, int8: 74.6, nf4: 72.8, awq: 73.5, gptq: 73.2,
+    q4Km: 68.5, q4Ks: 68.0, q4_0: 67.0, q3Km: 63.0, q3Ks: 61.0, q2K: 55.0,
+  },
+  "hy3": {
+    bf16Baseline: 76.5, fp8: 75.8, int8: 76.1, nf4: 74.5, awq: 75.3, gptq: 75.0,
+    q4Km: 70.5, q4Ks: 70.0, q4_0: 69.0, q3Km: 65.0, q3Ks: 63.0, q2K: 57.0,
+  },
+  "kimi_k2_6": {
+    bf16Baseline: 75.0, fp8: 74.2, int8: 74.6, nf4: 72.8, awq: 73.5, gptq: 73.2,
+    q4Km: 68.5, q4Ks: 68.0, q4_0: 67.0, q3Km: 63.0, q3Ks: 61.0, q2K: 55.0,
+  },
+  "hy3_fp8": {
+    bf16Baseline: 76.5, fp8: 75.8, int8: 76.1, nf4: 74.5, awq: 75.3, gptq: 75.0,
+    q4Km: 70.5, q4Ks: 70.0, q4_0: 69.0, q3Km: 65.0, q3Ks: 63.0, q2K: 57.0,
   },
 };
 
@@ -330,7 +356,27 @@ export const MODEL_LIST: ModelSpec[] = [
   { id: "glm5_1",               name: "GLM-5.1 754B (MoE)",        params: 754,   activeParams: 40,  layers: 78,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 16384, maxContextTokens: 202752, source: "huggingface", family: "GLM",      vocabSize: 217624, tiedEmbeddings: false, releaseYear: 2026, notes: "256 routed + 1 shared, 8+1 active; GlmMoeDSA; 202K ctx, 131K output; SWE-Bench Pro 58.4" },
   // GLM-5.2: Flagship with 1M context, MTP, thinking effort levels
   { id: "glm5_2",               name: "GLM-5.2 753B (MoE)",        params: 753,   activeParams: 40,  layers: 78,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 16384, maxContextTokens: 1048576, source: "huggingface", family: "GLM",      vocabSize: 217624, tiedEmbeddings: false, releaseYear: 2026, notes: "Index share MoE; 1M ctx, 131K output; MTP heads; high/max thinking effort" },
-  // ── Qwen2.5-Coder ────────────────────────────────────────────────────────
+  // ── Moonshot AI Kimi K2 Family ───────────────────────────────────────────────
+  // Kimi K2: 1T-parameter MoE with MLA (Multi-Latent Attention) + 384 experts
+  // Architecture: DeepSeek-V3 style with grouped GEMM, expert bias, shared expert
+  // All K2 variants share the same base architecture (1T total / 32B active)
+  { id: "kimi_k2",              name: "Kimi K2 1T (MoE)",          params: 1000,  activeParams: 32,  layers: 61,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 64,  intermediateSize: 18432, maxContextTokens: 131072, numExperts: 384, numExpertsActive: 8, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2025, notes: "384 experts, 8 active; MLA; 128K ctx; MuonClip optimizer" },
+  // Kimi K2 Thinking: Extended reasoning variant with 256K context
+  { id: "kimi_k2_thinking",     name: "Kimi K2 Thinking 1T (MoE)", params: 1000,  activeParams: 32,  layers: 61,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 64,  intermediateSize: 18432, maxContextTokens: 262144, numExperts: 384, numExpertsActive: 8, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2025, notes: "384 experts, 8 active; MLA; 256K ctx; native INT4 quantized" },
+  // Kimi K2.5: Multimodal extension with MoonViT vision encoder, Agent Swarm (100 agents)
+  { id: "kimi_k2_5",            name: "Kimi K2.5 1T (MoE)",        params: 1000,  activeParams: 32,  layers: 61,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 64,  intermediateSize: 18432, maxContextTokens: 262144, numExperts: 384, numExpertsActive: 8, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2026, notes: "Multimodal (text+image+video); MoonViT; Agent Swarm 100 agents; INT4 pre-quantized" },
+  // ── Tencent Hy3 ──────────────────────────────────────────────────────────────
+  // Hy3: 295B MoE with 192 routed experts + 1 shared expert, first layer dense
+  // Uses sigmoid routing with expert-bias correction, route norm, DSA attention
+  { id: "hy3",                  name: "Hy3 295B (MoE)",            params: 295,   activeParams: 21,  layers: 80,  hiddenDim: 4096,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 13312, maxContextTokens: 262144, numExperts: 192, numExpertsActive: 8, numSharedExperts: 1, source: "huggingface", family: "Hunyuan", vocabSize: 120832, tiedEmbeddings: false, releaseYear: 2026, notes: "192 routed + 1 shared experts, 8 active; first layer dense; MTP layer; Apache 2.0" },
+  // ── Tencent Hy3-FP8 (FP8 quantized variant) ────────────────────────
+  // Same architecture as Hy3 but with FP8 weights (~129.6GB VRAM at FP8)
+  { id: "hy3_fp8",              name: "Hy3-FP8 295B (MoE)",        params: 295,   activeParams: 21,  layers: 80,  hiddenDim: 4096,  numHeads: 64,  numKvHeads: 8,   intermediateSize: 13312, maxContextTokens: 262144, numExperts: 192, numExpertsActive: 8, numSharedExperts: 1, source: "huggingface", family: "Hunyuan", vocabSize: 120832, tiedEmbeddings: false, releaseYear: 2026, notes: "FP8 quantized variant; ~129.6GB VRAM at FP8; 192 routed + 1 shared experts, 8 active" },
+  // ── Moonshot AI Kimi K2.6 ────────────────────────────────────────────
+  // K2.6: Flagship agentic model with Agent Swarm (300 agents), 4000 coordinated steps
+  // Same core architecture as K2/K2.5 — retrained post-training pipeline, not new topology
+  { id: "kimi_k2_6",            name: "Kimi K2.6 1T (MoE)",        params: 1000,  activeParams: 32,  layers: 61,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 64,  intermediateSize: 18432, maxContextTokens: 262144, numExperts: 384, numExpertsActive: 8, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2026, notes: "384 experts, 8 active; MLA; 256K ctx; Agent Swarm 300 agents; Modified MIT license" },
+  // ── Qwen2.5-Coder ────────────────────────────────────────────────────────────
   // Code-specialized models built on the Qwen2.5 architecture.
   // All dimensions verified from the official technical report (arXiv:2409.12186)
   // Table 1 and confirmed against individual model config.json files on HuggingFace.
