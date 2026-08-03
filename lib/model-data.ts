@@ -376,6 +376,19 @@ export const MODEL_LIST: ModelSpec[] = [
   // K2.6: Flagship agentic model with Agent Swarm (300 agents), 4000 coordinated steps
   // Same core architecture as K2/K2.5 — retrained post-training pipeline, not new topology
   { id: "kimi_k2_6",            name: "Kimi K2.6 1T (MoE)",        params: 1000,  activeParams: 32,  layers: 61,  hiddenDim: 7168,  numHeads: 64,  numKvHeads: 64,  intermediateSize: 18432, maxContextTokens: 262144, numExperts: 384, numExpertsActive: 8, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2026, notes: "384 experts, 8 active; MLA; 256K ctx; Agent Swarm 300 agents; Modified MIT license" },
+  // ── Moonshot AI Kimi K3 ─────────────────────────────────────────────────
+  // K3: 308B total MoE with 2088 routers, 16 active per token
+  // Hybrid architecture: linear attention (KDA) + full attention + MLA
+  // 24 full-attention layers, 69 KDA layers, 256K context
+  { id: "kimi_k3",              name: "Kimi K3 308B (MoE)",        params: 308,   activeParams: 28,  layers: 93,  hiddenDim: 7168,  numHeads: 96,  numKvHeads: 96,  intermediateSize: 33792, maxContextTokens: 262144, numExperts: 2088, numExpertsActive: 16, source: "huggingface", family: "Kimi", vocabSize: 163840, tiedEmbeddings: false, releaseYear: 2026, notes: "2088 experts, 16 active; hybrid linear+full attention; 256K ctx; multimodal" },
+  // ── DeepSeek V4 Flash ─────────────────────────────────────────────────
+  // V4 Flash: 284B MoE with CSA (Chunked Sparse Attention) + HCA (Hybrid Cache Attention)
+  // Native FP8 quantized, 1M context window
+  // 256 experts, 6 active per token, 43 layers
+  { id: "deepseek_v4",          name: "DeepSeek-V4 Flash 284B (MoE)", params: 284,   activeParams: 24,  layers: 43,  hiddenDim: 4096,  numHeads: 64,  numKvHeads: 1,   intermediateSize: 2048, maxContextTokens: 1048576, numExperts: 256, numExpertsActive: 6, source: "huggingface", family: "DeepSeek", vocabSize: 129280, tiedEmbeddings: false, releaseYear: 2026, notes: "256 experts, 6 active; CSA+HCA hybrid attention; native FP8; 1M ctx" },
+  // ── NVIDIA Nemotron Nano 9B v2 ──────────────────────────────────────────
+  // Mamba2-Transformer hybrid with sliding window, 128K context
+  { id: "nemotron_9b",          name: "Nemotron Nano 9B v2",       params: 8.89,  layers: 56,  hiddenDim: 4480,  numHeads: 40,  numKvHeads: 8,   intermediateSize: 15680, maxContextTokens: 131072, source: "huggingface", family: "Nemotron", vocabSize: 131072, tiedEmbeddings: false, releaseYear: 2025, notes: "Mamba2-Transformer hybrid; 128K ctx; competitive with Llama-3.2-11B" },
   // ── Qwen2.5-Coder ────────────────────────────────────────────────────────────
   // Code-specialized models built on the Qwen2.5 architecture.
   // All dimensions verified from the official technical report (arXiv:2409.12186)
