@@ -101,7 +101,7 @@ export default function Page() {
           <TabsContent value="calculator" className="mt-0">
             <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 min-h-[80vh]">
               {/* Config sidebar */}
-              <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+              <div className="rounded-xl border border-border bg-card flex flex-col">
                 <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                   <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -114,7 +114,7 @@ export default function Page() {
               </div>
 
               {/* Results main area */}
-              <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+              <div className="rounded-xl border border-border bg-card flex flex-col">
                 <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
