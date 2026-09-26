@@ -315,18 +315,8 @@ export function calcTTFT(
   quant: QuantConfig,
   gpu: GpuSpec,
   numGpus: number,
-  promptTokens: number,
-  kvCache?: KvCacheConfig,
-  contextLen?: number,
-  concurrentUsers?: number,
-  pagedAttention?: boolean
+  promptTokens: number
 ): number {
-  // If overflow params provided, check VRAM fit first
-  if (kvCache !== undefined && contextLen !== undefined && concurrentUsers !== undefined) {
-    if (isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention)) {
-      return Infinity; // Cannot run — no valid inference path
-    }
-  }
   const activeP = getActiveParams(model); // use active params, not total!
   const parallelEff = numGpus === 1 ? 1.0 : 0.8;
   const effectiveTflops = gpu.tflops16 * numGpus * parallelEff;
@@ -390,17 +380,8 @@ export function calcTokensPerSecond(
   numGpus: number,
   concurrentUsers: number,
   specMode?: "standard" | "mtp" | undefined,
-  offloadPenaltyFactor?: number,
-  kvCache?: KvCacheConfig,
-  contextLen?: number,
-  pagedAttention?: boolean
+  offloadPenaltyFactor?: number
 ): number {
-  // If overflow params provided, check VRAM fit first
-  if (kvCache !== undefined && contextLen !== undefined) {
-    if (isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention)) {
-      return 0; // Cannot run — model overflows available VRAM
-    }
-  }
   const bpw = bytesPerParam(quant);
   const effectiveParams = getActiveParams(model);
   let bytesPerToken = (effectiveParams * 1e9 * bpw) / numGpus;

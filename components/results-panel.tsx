@@ -169,13 +169,13 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   );
 
   const ttft = useMemo(
-    () => calcTTFT(model, quant, gpu, numGpus, promptTokens, kvCache, contextLen, concurrentUsers, pagedAttention),
-    [model, quant, gpu, numGpus, promptTokens, kvCache, contextLen, concurrentUsers, pagedAttention]
+    () => calcTTFT(model, quant, gpu, numGpus, promptTokens),
+    [model, quant, gpu, numGpus, promptTokens]
   );
 
   const tps = useMemo(
-    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, kvCache, contextLen, pagedAttention),
-    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, kvCache, contextLen, pagedAttention]
+    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor),
+    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor]
   );
 
   const totalAvailableVram = gpu.vramGb * numGpus;

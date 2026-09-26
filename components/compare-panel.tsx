@@ -91,24 +91,20 @@ export default function ComparePanel({ baseConfig }: ComparePanelProps) {
       );
       const fitStatus = getFitStatus(vram.totalGb, gpu, numGpus);
       const isOverflow = fitStatus === "overflow";
-      const ttftMs = isOverflow
-        ? Infinity
-        : calcTTFT(
-            baseConfig.model,
-            baseConfig.quant,
-            gpu,
-            numGpus,
-            baseConfig.promptTokens
-          );
-      const tps = isOverflow
-        ? 0
-        : calcTokensPerSecond(
-            baseConfig.model,
-            baseConfig.quant,
-            gpu,
-            numGpus,
-            baseConfig.concurrentUsers
-          );
+      const ttftMs = calcTTFT(
+        baseConfig.model,
+        baseConfig.quant,
+        gpu,
+        numGpus,
+        baseConfig.promptTokens
+      );
+      const tps = calcTokensPerSecond(
+        baseConfig.model,
+        baseConfig.quant,
+        gpu,
+        numGpus,
+        baseConfig.concurrentUsers
+      );
       const needed = gpusRequired(vram.totalGb, gpu);
       const available = gpu.vramGb * numGpus;
       return {
