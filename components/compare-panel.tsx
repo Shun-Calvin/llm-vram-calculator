@@ -7,7 +7,6 @@ import {
   calcTTFT,
   calcTokensPerSecond,
   gpusRequired,
-  isVramOverflow,
   type GpuSpec,
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
@@ -82,18 +81,16 @@ export default function ComparePanel({ baseConfig }: ComparePanelProps) {
         baseConfig.quant,
         baseConfig.kvCache,
         baseConfig.contextLen,
-        baseConfig.concurrentUsers
-      );
-      const isOverflow = isVramOverflow(
-        baseConfig.model,
-        baseConfig.quant,
-        gpu,
-        numGpus,
-        baseConfig.kvCache,
-        baseConfig.contextLen,
         baseConfig.concurrentUsers,
-        baseConfig.pagedAttention
+        baseConfig.pagedAttention,
+        baseConfig.speculativeDecoding,
+        baseConfig.specDraftModelSize,
+        baseConfig.specMode,
+        baseConfig.expertOffloading,
+        baseConfig.numGpuExperts
       );
+      const fitStatus = getFitStatus(vram.totalGb, gpu, numGpus);
+      const isOverflow = fitStatus === "overflow";
       const ttftMs = isOverflow
         ? Infinity
         : calcTTFT(
@@ -101,11 +98,7 @@ export default function ComparePanel({ baseConfig }: ComparePanelProps) {
             baseConfig.quant,
             gpu,
             numGpus,
-            baseConfig.promptTokens,
-            baseConfig.kvCache,
-            baseConfig.contextLen,
-            baseConfig.concurrentUsers,
-            baseConfig.pagedAttention
+            baseConfig.promptTokens
           );
       const tps = isOverflow
         ? 0
@@ -114,12 +107,7 @@ export default function ComparePanel({ baseConfig }: ComparePanelProps) {
             baseConfig.quant,
             gpu,
             numGpus,
-            baseConfig.concurrentUsers,
-            undefined,
-            undefined,
-            baseConfig.kvCache,
-            baseConfig.contextLen,
-            baseConfig.pagedAttention
+            baseConfig.concurrentUsers
           );
       const needed = gpusRequired(vram.totalGb, gpu);
       const available = gpu.vramGb * numGpus;

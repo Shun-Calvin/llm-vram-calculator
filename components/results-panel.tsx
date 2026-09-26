@@ -27,7 +27,6 @@ import {
   gpusRequired,
   effectiveBandwidthGBs,
   getActiveParams,
-  isVramOverflow,
   type GpuSpec,
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
@@ -179,8 +178,6 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
     [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, kvCache, contextLen, pagedAttention]
   );
 
-  const isOverflow = isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention);
-
   const totalAvailableVram = gpu.vramGb * numGpus;
   const fitStatus = getFitStatus(vram.totalGb, gpu, numGpus);
   const fitCfg = FIT_CONFIG[fitStatus];
@@ -191,12 +188,11 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   const isMoE = vram.isMoE;
   const activeParams = getActiveParams(model);
 
-  const ttftDisplay = isOverflow
-    ? "∞"
-    : ttft < 1000 ? `${ttft.toFixed(0)} ms` : `${(ttft / 1000).toFixed(2)} s`;
+  const ttftDisplay =
+    ttft < 1000 ? `${ttft.toFixed(0)} ms` : `${(ttft / 1000).toFixed(2)} s`;
 
-  const tpsDisplay = isOverflow ? "0" : tps.toFixed(1);
-  const totalSystemTps = isOverflow ? 0 : tps * concurrentUsers;
+  const tpsDisplay = fitStatus === "overflow" ? "0" : tps.toFixed(1);
+  const totalSystemTps = fitStatus === "overflow" ? 0 : tps * concurrentUsers;
 
   const headDim = Math.round(model.hiddenDim / model.numHeads);
   const kvPerUser =
@@ -332,8 +328,8 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           icon={Clock}
           label="Time to First Token"
           value={ttftDisplay}
-          unit={isOverflow ? "⚠️" : ttft < 1000 ? "ms" : "s"}
-          sub={isOverflow
+          unit={fitStatus === "overflow" ? "⚠️" : ttft < 1000 ? "ms" : "s"}
+          sub={fitStatus === "overflow"
             ? `${promptTokens} prompt tokens · GPU cannot fit this model`
             : `${promptTokens} prompt tokens · ${numGpus}? GPU · ${isMoE ? `${activeParams}B active params` : `${model.params}B params`}`}
         />
@@ -341,8 +337,8 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
           icon={Zap}
           label="Tokens / Second"
           value={tpsDisplay}
-          unit={isOverflow ? "" : "tok/s"}
-          sub={isOverflow
+          unit={fitStatus === "overflow" ? "" : "tok/s"}
+          sub={fitStatus === "overflow"
             ? "Model exceeds available VRAM — cannot run"
             : `Per user · ${totalSystemTps.toFixed(0)} tok/s total · ${effectiveBw.toFixed(0)} GB/s eff. BW`}
         />
