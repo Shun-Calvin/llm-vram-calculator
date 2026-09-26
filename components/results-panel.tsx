@@ -27,6 +27,7 @@ import {
   gpusRequired,
   effectiveBandwidthGBs,
   getActiveParams,
+  isVramOverflow,
   type GpuSpec,
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
@@ -169,14 +170,16 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   );
 
   const ttft = useMemo(
-    () => calcTTFT(model, quant, gpu, numGpus, promptTokens),
-    [model, quant, gpu, numGpus, promptTokens]
+    () => calcTTFT(model, quant, gpu, numGpus, promptTokens, kvCache, contextLen, concurrentUsers, pagedAttention),
+    [model, quant, gpu, numGpus, promptTokens, kvCache, contextLen, concurrentUsers, pagedAttention]
   );
 
   const tps = useMemo(
-    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor),
-    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor]
+    () => calcTokensPerSecond(model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, kvCache, contextLen, pagedAttention),
+    [model, quant, gpu, numGpus, concurrentUsers, vram.specMode, vram.offloadPenaltyFactor, kvCache, contextLen, pagedAttention]
   );
+
+  const isOverflow = isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention);
 
   const totalAvailableVram = gpu.vramGb * numGpus;
   const fitStatus = getFitStatus(vram.totalGb, gpu, numGpus);
@@ -188,16 +191,17 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
   const isMoE = vram.isMoE;
   const activeParams = getActiveParams(model);
 
-  const ttftDisplay =
-    ttft < 1000 ? `${ttft.toFixed(0)} ms` : `${(ttft / 1000).toFixed(2)} s`;
+  const ttftDisplay = isOverflow
+    ? "∞"
+    : ttft < 1000 ? `${ttft.toFixed(0)} ms` : `${(ttft / 1000).toFixed(2)} s`;
+
+  const tpsDisplay = isOverflow ? "0" : tps.toFixed(1);
+  const totalSystemTps = isOverflow ? 0 : tps * concurrentUsers;
 
   const headDim = Math.round(model.hiddenDim / model.numHeads);
   const kvPerUser =
     (2 * model.numKvHeads * headDim * contextLen * model.layers * (kvCache.bitsPerElement / 8)) /
     1024 ** 3;
-
-  // Throughput per user vs total system throughput
-  const totalSystemTps = tps * concurrentUsers;
 
   return (
     <div className="flex flex-col gap-6 p-5 overflow-y-auto h-full">
@@ -327,16 +331,20 @@ export default function ResultsPanel({ config }: ResultsPanelProps) {
         <MetricCard
           icon={Clock}
           label="Time to First Token"
-          value={ttft < 1000 ? ttft.toFixed(0) : (ttft / 1000).toFixed(2)}
-          unit={ttft < 1000 ? "ms" : "s"}
-          sub={`${promptTokens} prompt tokens · ${numGpus}? GPU · ${isMoE ? `${activeParams}B active params` : `${model.params}B params`}`}
+          value={ttftDisplay}
+          unit={isOverflow ? "⚠️" : ttft < 1000 ? "ms" : "s"}
+          sub={isOverflow
+            ? `${promptTokens} prompt tokens · GPU cannot fit this model`
+            : `${promptTokens} prompt tokens · ${numGpus}? GPU · ${isMoE ? `${activeParams}B active params` : `${model.params}B params`}`}
         />
         <MetricCard
           icon={Zap}
           label="Tokens / Second"
-          value={tps.toFixed(1)}
-          unit="tok/s"
-          sub={`Per user · ${totalSystemTps.toFixed(0)} tok/s total · ${effectiveBw.toFixed(0)} GB/s eff. BW`}
+          value={tpsDisplay}
+          unit={isOverflow ? "" : "tok/s"}
+          sub={isOverflow
+            ? "Model exceeds available VRAM — cannot run"
+            : `Per user · ${totalSystemTps.toFixed(0)} tok/s total · ${effectiveBw.toFixed(0)} GB/s eff. BW`}
         />
       </div>
 

@@ -7,6 +7,7 @@ import {
   calcTTFT,
   calcTokensPerSecond,
   gpusRequired,
+  isVramOverflow,
   type GpuSpec,
 } from "@/lib/llm-data";
 import type { CalcConfig } from "@/components/config-panel";
@@ -83,20 +84,43 @@ export default function ComparePanel({ baseConfig }: ComparePanelProps) {
         baseConfig.contextLen,
         baseConfig.concurrentUsers
       );
-      const ttftMs = calcTTFT(
+      const isOverflow = isVramOverflow(
         baseConfig.model,
         baseConfig.quant,
         gpu,
         numGpus,
-        baseConfig.promptTokens
+        baseConfig.kvCache,
+        baseConfig.contextLen,
+        baseConfig.concurrentUsers,
+        baseConfig.pagedAttention
       );
-      const tps = calcTokensPerSecond(
-        baseConfig.model,
-        baseConfig.quant,
-        gpu,
-        numGpus,
-        baseConfig.concurrentUsers
-      );
+      const ttftMs = isOverflow
+        ? Infinity
+        : calcTTFT(
+            baseConfig.model,
+            baseConfig.quant,
+            gpu,
+            numGpus,
+            baseConfig.promptTokens,
+            baseConfig.kvCache,
+            baseConfig.contextLen,
+            baseConfig.concurrentUsers,
+            baseConfig.pagedAttention
+          );
+      const tps = isOverflow
+        ? 0
+        : calcTokensPerSecond(
+            baseConfig.model,
+            baseConfig.quant,
+            gpu,
+            numGpus,
+            baseConfig.concurrentUsers,
+            undefined,
+            undefined,
+            baseConfig.kvCache,
+            baseConfig.contextLen,
+            baseConfig.pagedAttention
+          );
       const needed = gpusRequired(vram.totalGb, gpu);
       const available = gpu.vramGb * numGpus;
       return {

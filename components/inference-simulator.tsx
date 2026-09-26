@@ -75,9 +75,10 @@ export function InferenceSimulator({
 
   // Cap simulation TTFT: we animate prefill at real-time for small values,
   // but cap to 4s max for very slow GPUs.
-  const simTtftMs = Math.min(ttftMs, 4000);
+  // If model overflows VRAM (ttft=Infinity), don't start simulation.
+  const simTtftMs = !isFinite(ttftMs) ? Infinity : Math.min(ttftMs, 4000);
   // Cap tok/s display at reasonable animation speed (max 250 chars/s visual)
-  const simTps = Math.min(tokensPerSecond, 250);
+  const simTps = !isFinite(tokensPerSecond) || tokensPerSecond <= 0 ? 0 : Math.min(tokensPerSecond, 250);
 
   const start = useCallback(() => {
     reset();

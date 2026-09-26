@@ -315,8 +315,18 @@ export function calcTTFT(
   quant: QuantConfig,
   gpu: GpuSpec,
   numGpus: number,
-  promptTokens: number
+  promptTokens: number,
+  kvCache?: KvCacheConfig,
+  contextLen?: number,
+  concurrentUsers?: number,
+  pagedAttention?: boolean
 ): number {
+  // If overflow params provided, check VRAM fit first
+  if (kvCache !== undefined && contextLen !== undefined && concurrentUsers !== undefined) {
+    if (isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention)) {
+      return Infinity; // Cannot run — no valid inference path
+    }
+  }
   const activeP = getActiveParams(model); // use active params, not total!
   const parallelEff = numGpus === 1 ? 1.0 : 0.8;
   const effectiveTflops = gpu.tflops16 * numGpus * parallelEff;
@@ -325,6 +335,26 @@ export function calcTTFT(
   const flops = 2 * activeP * 1e9 * promptTokens;
   const timeS = flops / (effectiveTflops * 1e12 * quantTflopsScale);
   return timeS * 1000; // ms
+}
+
+/**
+ * Check if model fits in the given GPU configuration.
+ * Uses 92% usable VRAM threshold (same as gpusRequired).
+ */
+export function fitsInVram(model: ModelSpec, quant: QuantConfig, gpu: GpuSpec, numGpus: number, kvCache: KvCacheConfig, contextLen: number, concurrentUsers: number, pagedAttention: boolean = false): boolean {
+  const totalGb = calcTotalVram(model, quant, kvCache, contextLen, concurrentUsers, pagedAttention).totalGb;
+  const availableGb = gpu.vramGb * numGpus;
+  return totalGb <= availableGb * 0.92;
+}
+
+/**
+ * Calculate VRAM overflow status for a given GPU config.
+ * Returns true if model overflows available VRAM (cannot fit even with single GPU).
+ */
+export function isVramOverflow(model: ModelSpec, quant: QuantConfig, gpu: GpuSpec, numGpus: number, kvCache: KvCacheConfig, contextLen: number, concurrentUsers: number, pagedAttention: boolean = false): boolean {
+  const totalGb = calcTotalVram(model, quant, kvCache, contextLen, concurrentUsers, pagedAttention).totalGb;
+  const availableGb = gpu.vramGb * numGpus;
+  return totalGb > availableGb * 0.92;
 }
 
 /**
@@ -360,8 +390,17 @@ export function calcTokensPerSecond(
   numGpus: number,
   concurrentUsers: number,
   specMode?: "standard" | "mtp" | undefined,
-  offloadPenaltyFactor?: number
+  offloadPenaltyFactor?: number,
+  kvCache?: KvCacheConfig,
+  contextLen?: number,
+  pagedAttention?: boolean
 ): number {
+  // If overflow params provided, check VRAM fit first
+  if (kvCache !== undefined && contextLen !== undefined) {
+    if (isVramOverflow(model, quant, gpu, numGpus, kvCache, contextLen, concurrentUsers, pagedAttention)) {
+      return 0; // Cannot run — model overflows available VRAM
+    }
+  }
   const bpw = bytesPerParam(quant);
   const effectiveParams = getActiveParams(model);
   let bytesPerToken = (effectiveParams * 1e9 * bpw) / numGpus;
